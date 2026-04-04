@@ -350,7 +350,8 @@ struct AppSettings: Codable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        monthStartDay = try container.decodeIfPresent(Int.self, forKey: .monthStartDay) ?? 1
+        let decodedMonthStartDay = try container.decodeIfPresent(Int.self, forKey: .monthStartDay) ?? 1
+        monthStartDay = min(max(decodedMonthStartDay, 1), 28)
         assistantReplyStyle = try container.decodeIfPresent(AssistantReplyStyle.self, forKey: .assistantReplyStyle) ?? .balanced
         showRecordImages = try container.decodeIfPresent(Bool.self, forKey: .showRecordImages) ?? true
         showLocation = try container.decodeIfPresent(Bool.self, forKey: .showLocation) ?? true

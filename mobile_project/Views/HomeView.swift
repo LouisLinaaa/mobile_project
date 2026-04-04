@@ -129,7 +129,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
                 HStack(spacing: 10) {
-                    Text("\(LedgerFormatters.monthTitle(for: Date()))支出")
+                    Text("统计周期支出")
                         .font(.system(size: 18, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.ledgerMuted)
 
@@ -505,7 +505,7 @@ struct HomeView: View {
         }
 
         let remaining = max(0, budgetLimit - store.currentMonthExpense)
-        return "本月预算 \(LedgerFormatters.currency(budgetLimit))，剩余 \(LedgerFormatters.currency(remaining))。"
+        return "本统计周期预算 \(LedgerFormatters.currency(budgetLimit))，剩余 \(LedgerFormatters.currency(remaining))。"
     }
 
     private func openScreen(_ screen: ManagementScreen) {

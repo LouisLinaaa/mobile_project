@@ -59,7 +59,7 @@ struct ManagementSheetView: View {
 
 private enum StatisticsRange: String, CaseIterable, Identifiable {
     case week = "近7天"
-    case month = "本月"
+    case month = "统计月"
 
     var id: String { rawValue }
 }
@@ -226,7 +226,7 @@ struct StatisticsView: View {
 
     private var summaryCard: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text(range == .week ? "近 7 天概览" : "本月概览")
+            Text(range == .week ? "近 7 天概览" : "统计月概览")
                 .font(.system(size: 18, weight: .bold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.95))
 
@@ -1445,8 +1445,8 @@ struct SettingsView: View {
             Divider().padding(.leading, 18)
 
             SettingToggleRow(
-                title: "优惠推荐",
-                subtitle: "控制首页推荐卡片展示",
+                title: "首页助手卡片",
+                subtitle: "控制首页“一句话快速记账”卡片展示",
                 isOn: Binding(
                     get: { store.appSettings.showOfferRecommendations },
                     set: { store.appSettings.showOfferRecommendations = $0 }
@@ -1574,6 +1574,7 @@ private struct SettingToggleRow: View {
             Spacer()
             Toggle("", isOn: $isOn)
                 .labelsHidden()
+                .accessibilityLabel(title)
                 .tint(Color.ledgerAccent)
         }
         .padding(.horizontal, 18)
