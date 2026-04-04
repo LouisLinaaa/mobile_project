@@ -83,6 +83,13 @@ enum LedgerFormatters {
         return formatter
     }()
 
+    private static let bookDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.dateFormat = "yyyy.MM.dd"
+        return formatter
+    }()
+
     static func currency(_ value: Double) -> String {
         currencyFormatter.string(from: NSNumber(value: value)) ?? "¥0.00"
     }
@@ -101,5 +108,9 @@ enum LedgerFormatters {
 
     static func entryTime(for date: Date) -> String {
         shortTimeFormatter.string(from: date)
+    }
+
+    static func bookDate(_ date: Date) -> String {
+        bookDateFormatter.string(from: date)
     }
 }
