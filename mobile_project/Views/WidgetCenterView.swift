@@ -184,13 +184,16 @@ struct WidgetCenterView: View {
     }
 
     private var todayExpensePreview: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("¥\(String(format: "%.2f", store.todayEntries.filter { $0.kind == .expense }.reduce(0) { $0 + $1.amount }))")
+        let expenseEntries = store.todayEntries.filter { $0.kind == .expense }
+        let todayExpenseTotal = expenseEntries.reduce(0) { $0 + $1.amount }
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("¥\(String(format: "%.2f", todayExpenseTotal))")
                 .font(.system(size: 34, weight: .black, design: .rounded))
                 .foregroundStyle(Color.ledgerText)
 
             VStack(alignment: .leading, spacing: 6) {
-                ForEach(store.todayEntries.prefix(3)) { entry in
+                ForEach(expenseEntries.prefix(3)) { entry in
                     HStack {
                         Circle().fill(entry.category.tint).frame(width: 6, height: 6)
                         Text(entry.category.name)
@@ -201,6 +204,12 @@ struct WidgetCenterView: View {
                             .font(.system(size: 14, weight: .bold, design: .rounded))
                             .foregroundStyle(Color.ledgerText)
                     }
+                }
+
+                if expenseEntries.isEmpty {
+                    Text("今天还没有支出记录")
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.ledgerMuted)
                 }
             }
         }
