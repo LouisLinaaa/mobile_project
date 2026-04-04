@@ -10,7 +10,15 @@ private enum LedgerWidgetKind {
 }
 
 private enum WidgetShared {
-    static let appGroupID = "group.com.example.mobileproject"
+    static let defaultAppGroupID = "group.com.example.mobileproject"
+    static let appGroupID: String = {
+        guard let configured = Bundle.main.object(forInfoDictionaryKey: "APP_GROUP_IDENTIFIER") as? String,
+              !configured.isEmpty,
+              !configured.contains("$(") else {
+            return defaultAppGroupID
+        }
+        return configured
+    }()
     static let snapshotDefaultsKey = "ledger.widget.snapshot.v1"
     static let deepLinkScheme = "ledgerapp"
 }

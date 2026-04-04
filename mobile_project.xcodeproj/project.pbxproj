@@ -347,6 +347,7 @@
 		A00000000000000000000062 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_GROUP_IDENTIFIER = group.com.example.mobileproject;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_ENTITLEMENTS = mobile_project/mobile_project.entitlements;
 				CODE_SIGN_STYLE = Automatic;
@@ -375,6 +376,7 @@
 		A00000000000000000000063 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_GROUP_IDENTIFIER = group.com.example.mobileproject;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_ENTITLEMENTS = mobile_project/mobile_project.entitlements;
 				CODE_SIGN_STYLE = Automatic;
@@ -403,6 +405,7 @@
 		A00000000000000000000080 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_GROUP_IDENTIFIER = group.com.example.mobileproject;
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = mobile_project_widgets/mobile_project_widgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
@@ -430,6 +433,7 @@
 		A00000000000000000000081 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_GROUP_IDENTIFIER = group.com.example.mobileproject;
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = mobile_project_widgets/mobile_project_widgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
