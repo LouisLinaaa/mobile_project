@@ -4,6 +4,7 @@ struct HomeView: View {
     @EnvironmentObject private var store: LedgerStore
 
     @State private var isDrawerPresented = false
+    @State private var activeScreen: ManagementScreen?
     @State private var highlightedFeature: String?
 
     var body: some View {
@@ -47,6 +48,10 @@ struct HomeView: View {
         }
         .sheet(isPresented: $store.isQuickAddPresented) {
             QuickAddSheet(store: store)
+        }
+        .sheet(item: $activeScreen) { screen in
+            ManagementSheetView(screen: screen)
+                .environmentObject(store)
         }
         .alert("功能预留", isPresented: featureAlertBinding) {
             Button("知道了", role: .cancel) { }
@@ -106,8 +111,8 @@ struct HomeView: View {
 
             Spacer()
 
-            CapsuleIconButton(icon: "calendar", title: "本月") {
-                presentPlaceholderFeature("月份切换")
+            CapsuleIconButton(icon: "book.closed.fill", title: store.currentBook.name) {
+                openScreen(.books)
             }
         }
     }
@@ -134,7 +139,7 @@ struct HomeView: View {
                 Spacer()
 
                 Button {
-                    presentPlaceholderFeature("统计")
+                    openScreen(.statistics)
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "chart.pie.fill")
@@ -410,7 +415,18 @@ struct HomeView: View {
     }
 
     private func presentPlaceholderFeature(_ feature: String) {
-        highlightedFeature = feature
+        switch feature {
+        case "统计", "图表统计":
+            openScreen(.statistics)
+        case "资产管理":
+            openScreen(.assets)
+        case "账本管理", "账本切换":
+            openScreen(.books)
+        case "分类管理":
+            openScreen(.categories)
+        default:
+            highlightedFeature = feature
+        }
     }
 
     private var budgetDescription: String {
@@ -420,6 +436,21 @@ struct HomeView: View {
 
         let remaining = max(0, budgetLimit - store.currentMonthExpense)
         return "本月预算 \(LedgerFormatters.currency(budgetLimit))，剩余 \(LedgerFormatters.currency(remaining))。"
+    }
+
+    private func openScreen(_ screen: ManagementScreen) {
+        let wasDrawerPresented = isDrawerPresented
+
+        if wasDrawerPresented {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
+                isDrawerPresented = false
+            }
+        }
+
+        let delay = wasDrawerPresented ? 0.18 : 0
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            activeScreen = screen
+        }
     }
 }
 
@@ -435,7 +466,8 @@ private struct CapsuleIconButton: View {
                     .font(.system(size: 17, weight: .semibold))
                 if let title {
                     Text(title)
-                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .lineLimit(1)
                 }
                 Image(systemName: "chevron.down")
                     .font(.system(size: 12, weight: .bold))

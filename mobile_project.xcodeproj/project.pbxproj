@@ -14,6 +14,7 @@
 		A00000000000000000000005 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000015 /* HomeView.swift */; };
 		A00000000000000000000006 /* DrawerMenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000016 /* DrawerMenuView.swift */; };
 		A00000000000000000000007 /* QuickAddSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000017 /* QuickAddSheet.swift */; };
+		A00000000000000000000008 /* ManagementViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000018 /* ManagementViews.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -25,6 +26,7 @@
 		A00000000000000000000015 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		A00000000000000000000016 /* DrawerMenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawerMenuView.swift; sourceTree = "<group>"; };
 		A00000000000000000000017 /* QuickAddSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickAddSheet.swift; sourceTree = "<group>"; };
+		A00000000000000000000018 /* ManagementViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagementViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -88,6 +90,7 @@
 				A00000000000000000000015 /* HomeView.swift */,
 				A00000000000000000000016 /* DrawerMenuView.swift */,
 				A00000000000000000000017 /* QuickAddSheet.swift */,
+				A00000000000000000000018 /* ManagementViews.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -167,6 +170,7 @@
 				A00000000000000000000005 /* HomeView.swift in Sources */,
 				A00000000000000000000006 /* DrawerMenuView.swift in Sources */,
 				A00000000000000000000007 /* QuickAddSheet.swift in Sources */,
+				A00000000000000000000008 /* ManagementViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -51,7 +51,7 @@ struct QuickAddSheet: View {
             }
         }
         .onChange(of: draft.kind) { _, _ in
-            draft.syncCategoryIfNeeded()
+            draft.selectedCategory = store.categories(for: draft.kind).first ?? LedgerCategory.defaultCategory(for: draft.kind)
         }
     }
 
@@ -101,7 +101,7 @@ struct QuickAddSheet: View {
                 .foregroundStyle(Color.ledgerText)
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 12)], spacing: 12) {
-                ForEach(LedgerCategory.categories(for: draft.kind)) { category in
+                ForEach(store.categories(for: draft.kind)) { category in
                     Button {
                         draft.selectedCategory = category
                     } label: {
