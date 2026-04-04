@@ -104,6 +104,10 @@ struct StatisticsView: View {
     private var trendPoints: [TrendPoint] {
         let calendar = Calendar.current
         let entries = filteredEntries.filter { $0.kind == selectedKind }
+        let totalsByDay = Dictionary(grouping: entries, by: { calendar.startOfDay(for: $0.date) })
+            .mapValues { dayEntries in
+                dayEntries.reduce(0) { $0 + $1.amount }
+            }
         let dates: [Date]
 
         switch range {
@@ -123,10 +127,8 @@ struct StatisticsView: View {
         }
 
         return dates.map { date in
-            let total = entries
-                .filter { calendar.isDate($0.date, inSameDayAs: date) }
-                .reduce(0) { $0 + $1.amount }
-
+            let dayKey = calendar.startOfDay(for: date)
+            let total = totalsByDay[dayKey] ?? 0
             return TrendPoint(date: date, amount: total)
         }
     }
@@ -969,8 +971,9 @@ private struct AccountEditorSheet: View {
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 14)], spacing: 14) {
                                 ForEach(store.accountTemplates(for: group)) { template in
                                     Button {
+                                        let previousTemplateName = selectedTemplate.name
                                         selectedTemplateID = template.id
-                                        if accountName.isEmpty || accountName == selectedTemplate.name {
+                                        if accountName.isEmpty || accountName == previousTemplateName {
                                             accountName = template.name
                                         }
                                     } label: {

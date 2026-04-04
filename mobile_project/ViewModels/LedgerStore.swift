@@ -104,12 +104,20 @@ final class LedgerStore: ObservableObject {
         )
     }
 
-    var totalRecordDays: Int {
+    var currentBookRecordDays: Int {
         Set(currentBookEntries.map { calendar.startOfDay(for: $0.date) }).count
     }
 
-    var totalRecords: Int {
+    var currentBookRecordCount: Int {
         currentBookEntries.count
+    }
+
+    var totalRecordDays: Int {
+        Set(entries.map { calendar.startOfDay(for: $0.date) }).count
+    }
+
+    var totalRecords: Int {
+        entries.count
     }
 
     var currentStreak: Int {
@@ -279,7 +287,7 @@ final class LedgerStore: ObservableObject {
             .replacingOccurrences(of: "/", with: "-")
 
         let category = LedgerCategory(
-            id: "\(kind.rawValue).\(slug).\(UUID().uuidString.prefix(4))",
+            id: "\(kind.storageKey).\(slug).\(UUID().uuidString.prefix(4))",
             name: safeName,
             icon: icon,
             tintStyle: tintStyle,

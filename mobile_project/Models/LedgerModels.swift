@@ -5,6 +5,16 @@ enum LedgerKind: String, CaseIterable, Identifiable {
     case income = "收入"
 
     var id: String { rawValue }
+
+    // Stable identifier for storage IDs; avoid localized display text.
+    var storageKey: String {
+        switch self {
+        case .expense:
+            "expense"
+        case .income:
+            "income"
+        }
+    }
 }
 
 enum LedgerTintStyle: String, CaseIterable, Identifiable {
