@@ -4,11 +4,21 @@ import SwiftUI
 final class LedgerStore: ObservableObject {
     @Published var isBalanceVisible = true
     @Published var isQuickAddPresented = false
-    @Published var budgetLimit: Double?
-    @Published private(set) var entries: [LedgerEntry]
-    @Published private(set) var books: [LedgerBook]
-    @Published var selectedBookID: UUID
-    @Published private(set) var accounts: [LedgerAccount]
+    @Published var budgetLimit: Double? {
+        didSet { syncWidgetSnapshot() }
+    }
+    @Published private(set) var entries: [LedgerEntry] {
+        didSet { syncWidgetSnapshot() }
+    }
+    @Published private(set) var books: [LedgerBook] {
+        didSet { syncWidgetSnapshot() }
+    }
+    @Published var selectedBookID: UUID {
+        didSet { syncWidgetSnapshot() }
+    }
+    @Published private(set) var accounts: [LedgerAccount] {
+        didSet { syncWidgetSnapshot() }
+    }
     @Published private(set) var categorySchemes: [LedgerCategoryScheme]
     @Published var selectedCategorySchemeID: UUID
 
@@ -29,6 +39,7 @@ final class LedgerStore: ObservableObject {
         self.accounts = seed.accounts
         self.categorySchemes = seed.categorySchemes
         self.selectedCategorySchemeID = seed.selectedCategorySchemeID
+        syncWidgetSnapshot()
     }
 
     var paymentMethods: [String] {
@@ -381,6 +392,63 @@ final class LedgerStore: ObservableObject {
         }
 
         return result
+    }
+
+    private func syncWidgetSnapshot() {
+        LedgerWidgetSnapshotStore.save(makeWidgetSnapshot())
+    }
+
+    private func makeWidgetSnapshot() -> LedgerWidgetSnapshot {
+        let todayExpenseEntries = todayEntries.filter { $0.kind == .expense }
+        let grouped = Dictionary(grouping: todayExpenseEntries, by: { $0.category.id })
+
+        let topCategories = grouped.compactMap { _, items -> LedgerWidgetCategorySnapshot? in
+            guard let first = items.first else { return nil }
+            let total = items.reduce(0) { $0 + $1.amount }
+            return LedgerWidgetCategorySnapshot(
+                id: first.category.id,
+                name: first.category.name,
+                amount: total,
+                tintHex: hexColor(for: first.category.tintStyle)
+            )
+        }
+        .sorted { $0.amount > $1.amount }
+        .prefix(4)
+
+        return LedgerWidgetSnapshot(
+            generatedAt: Date(),
+            todayExpenseTotal: todayExpenseEntries.reduce(0) { $0 + $1.amount },
+            todayExpenseItems: Array(topCategories),
+            budgetLimit: budgetLimit,
+            currentMonthExpense: currentMonthExpense,
+            budgetProgress: budgetProgress,
+            totalAssets: totalAssets,
+            totalLiabilities: totalLiabilities,
+            netWorth: netWorth,
+            autoLedgerPendingCount: 0,
+            autoLedgerPostedCount: 0,
+            autoLedgerFailedCount: 0,
+            autoLedgerUpdatedAt: Date()
+        )
+    }
+
+    private func hexColor(for style: LedgerTintStyle) -> String {
+        switch style {
+        case .accent:
+            return "#4F81FA"
+        case .gold:
+            return "#F5C35A"
+        case .mint:
+            return "#75CAC2"
+        case .lavender:
+            return "#AAA1F7"
+        case .coral:
+            return "#F2A193"
+        case .expense:
+            return "#F57A61"
+        case .income:
+            return "#4AAC84"
+        }
     }
 
     private struct SeedState {

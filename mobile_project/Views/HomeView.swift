@@ -58,6 +58,7 @@ struct HomeView: View {
         } message: {
             Text("\(highlightedFeature ?? "这个入口") 先保留了结构和入口，后续我们可以继续把它做成完整功能。")
         }
+        .onOpenURL(perform: handleWidgetDeepLink(_:))
     }
 
     private var mainContent: some View {
@@ -497,6 +498,31 @@ struct HomeView: View {
         let delay = wasDrawerPresented ? 0.18 : 0
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             activeScreen = screen
+        }
+    }
+
+    private func handleWidgetDeepLink(_ url: URL) {
+        guard url.scheme == LedgerWidgetShared.deepLinkScheme else { return }
+
+        let action = url.host ?? url.pathComponents.dropFirst().first ?? ""
+
+        switch action {
+        case "quick-add":
+            store.isQuickAddPresented = true
+        case "statistics":
+            openScreen(.statistics)
+        case "assets":
+            openScreen(.assets)
+        case "books":
+            openScreen(.books)
+        case "categories":
+            openScreen(.categories)
+        case "auto-ledger":
+            openScreen(.autoLedgerCenter)
+        case "widgets":
+            openScreen(.widgets)
+        default:
+            break
         }
     }
 }
