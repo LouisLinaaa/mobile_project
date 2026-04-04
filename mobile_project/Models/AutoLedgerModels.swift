@@ -84,8 +84,41 @@ struct AutoLedgerReviewDraft: Identifiable {
     var reason: String
 
     var parsedAmount: Double? {
-        let normalized = amountText.replacingOccurrences(of: ",", with: ".")
-        return Double(normalized)
+        var cleaned = amountText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "¥", with: "")
+            .replacingOccurrences(of: "￥", with: "")
+            .replacingOccurrences(of: " ", with: "")
+
+        guard !cleaned.isEmpty else { return nil }
+
+        let commaCount = cleaned.filter { $0 == "," }.count
+        let dotCount = cleaned.filter { $0 == "." }.count
+
+        if commaCount > 0 && dotCount > 0 {
+            let lastComma = cleaned.lastIndex(of: ",") ?? cleaned.startIndex
+            let lastDot = cleaned.lastIndex(of: ".") ?? cleaned.startIndex
+            let decimalSeparator: Character = lastComma > lastDot ? "," : "."
+            let groupingSeparator: Character = decimalSeparator == "," ? "." : ","
+
+            cleaned.removeAll { $0 == groupingSeparator }
+            if decimalSeparator == "," {
+                cleaned = cleaned.replacingOccurrences(of: ",", with: ".")
+            }
+        } else if commaCount > 0 && dotCount == 0 {
+            if commaCount > 1 {
+                cleaned.removeAll { $0 == "," }
+            } else {
+                let parts = cleaned.split(separator: ",")
+                if parts.count == 2, parts[1].count != 3 {
+                    cleaned = cleaned.replacingOccurrences(of: ",", with: ".")
+                } else {
+                    cleaned.removeAll { $0 == "," }
+                }
+            }
+        }
+
+        return Double(cleaned)
     }
 }
 
