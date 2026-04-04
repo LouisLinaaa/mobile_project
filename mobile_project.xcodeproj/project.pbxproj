@@ -19,7 +19,34 @@
 		A0000000000000000000000A /* AutoLedgerFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001A /* AutoLedgerFlow.swift */; };
 		A0000000000000000000000B /* AutoLedgerCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001B /* AutoLedgerCenterView.swift */; };
 		A0000000000000000000000C /* WidgetCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001C /* WidgetCenterView.swift */; };
+		A00000000000000000000064 /* WidgetSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000006A /* WidgetSnapshotStore.swift */; };
+		A00000000000000000000065 /* LedgerWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000006C /* LedgerWidgetsBundle.swift */; };
+		A00000000000000000000066 /* mobile_project_widgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A0000000000000000000006B /* mobile_project_widgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A00000000000000000000078 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A00000000000000000000050 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A00000000000000000000077;
+			remoteInfo = mobile_project_widgets;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A00000000000000000000072 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A00000000000000000000066 /* mobile_project_widgets.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		A00000000000000000000010 /* mobile_project.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mobile_project.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -35,10 +62,24 @@
 		A0000000000000000000001A /* AutoLedgerFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoLedgerFlow.swift; sourceTree = "<group>"; };
 		A0000000000000000000001B /* AutoLedgerCenterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoLedgerCenterView.swift; sourceTree = "<group>"; };
 		A0000000000000000000001C /* WidgetCenterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetCenterView.swift; sourceTree = "<group>"; };
+		A0000000000000000000006A /* WidgetSnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshotStore.swift; sourceTree = "<group>"; };
+		A0000000000000000000006B /* mobile_project_widgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = mobile_project_widgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A0000000000000000000006C /* LedgerWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LedgerWidgetsBundle.swift; sourceTree = "<group>"; };
+		A0000000000000000000006D /* mobile_project.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = mobile_project.entitlements; sourceTree = "<group>"; };
+		A0000000000000000000006E /* mobile_project_widgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = mobile_project_widgets.entitlements; sourceTree = "<group>"; };
+		A0000000000000000000006F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A00000000000000000000090 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		A00000000000000000000020 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A00000000000000000000071 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -52,6 +93,7 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000031 /* mobile_project */,
+				A00000000000000000000076 /* mobile_project_widgets */,
 				A00000000000000000000032 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -60,9 +102,12 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000011 /* MobileProjectApp.swift */,
+				A0000000000000000000006F /* Info.plist */,
+				A0000000000000000000006D /* mobile_project.entitlements */,
 				A00000000000000000000033 /* Models */,
 				A00000000000000000000034 /* ViewModels */,
 				A00000000000000000000035 /* Views */,
+				A00000000000000000000075 /* WidgetSupport */,
 			);
 			path = mobile_project;
 			sourceTree = "<group>";
@@ -71,6 +116,7 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000010 /* mobile_project.app */,
+				A0000000000000000000006B /* mobile_project_widgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -107,6 +153,24 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
+		A00000000000000000000075 /* WidgetSupport */ = {
+			isa = PBXGroup;
+			children = (
+				A0000000000000000000006A /* WidgetSnapshotStore.swift */,
+			);
+			path = WidgetSupport;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000076 /* mobile_project_widgets */ = {
+			isa = PBXGroup;
+			children = (
+				A0000000000000000000006C /* LedgerWidgetsBundle.swift */,
+				A00000000000000000000090 /* Info.plist */,
+				A0000000000000000000006E /* mobile_project_widgets.entitlements */,
+			);
+			path = mobile_project_widgets;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -117,15 +181,34 @@
 				A00000000000000000000021 /* Sources */,
 				A00000000000000000000020 /* Frameworks */,
 				A00000000000000000000022 /* Resources */,
+				A00000000000000000000072 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A00000000000000000000079 /* PBXTargetDependency */,
 			);
 			name = mobile_project;
 			productName = mobile_project;
 			productReference = A00000000000000000000010 /* mobile_project.app */;
 			productType = "com.apple.product-type.application";
+		};
+		A00000000000000000000077 /* mobile_project_widgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000084 /* Build configuration list for PBXNativeTarget "mobile_project_widgets" */;
+			buildPhases = (
+				A00000000000000000000073 /* Sources */,
+				A00000000000000000000071 /* Frameworks */,
+				A00000000000000000000074 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = mobile_project_widgets;
+			productName = mobile_project_widgets;
+			productReference = A0000000000000000000006B /* mobile_project_widgets.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -138,6 +221,9 @@
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
 					A00000000000000000000040 = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					A00000000000000000000077 = {
 						CreatedOnToolsVersion = 26.3;
 					};
 				};
@@ -156,12 +242,20 @@
 			projectRoot = "";
 			targets = (
 				A00000000000000000000040 /* mobile_project */,
+				A00000000000000000000077 /* mobile_project_widgets */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		A00000000000000000000022 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A00000000000000000000074 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -187,10 +281,27 @@
 				A0000000000000000000000A /* AutoLedgerFlow.swift in Sources */,
 				A0000000000000000000000B /* AutoLedgerCenterView.swift in Sources */,
 				A0000000000000000000000C /* WidgetCenterView.swift in Sources */,
+				A00000000000000000000064 /* WidgetSnapshotStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A00000000000000000000073 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000065 /* LedgerWidgetsBundle.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A00000000000000000000079 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A00000000000000000000077 /* mobile_project_widgets */;
+			targetProxy = A00000000000000000000078 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A00000000000000000000060 /* Debug */ = {
@@ -237,19 +348,15 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_ENTITLEMENTS = mobile_project/mobile_project.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "本地记账";
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = mobile_project/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -269,19 +376,15 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_ENTITLEMENTS = mobile_project/mobile_project.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "本地记账";
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = mobile_project/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -290,6 +393,60 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.mobileproject;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		A00000000000000000000080 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = mobile_project_widgets/mobile_project_widgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = mobile_project_widgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.mobileproject.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		A00000000000000000000081 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = mobile_project_widgets/mobile_project_widgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = mobile_project_widgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.mobileproject.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -314,6 +471,15 @@
 			buildConfigurations = (
 				A00000000000000000000062 /* Debug */,
 				A00000000000000000000063 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A00000000000000000000084 /* Build configuration list for PBXNativeTarget "mobile_project_widgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000080 /* Debug */,
+				A00000000000000000000081 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
