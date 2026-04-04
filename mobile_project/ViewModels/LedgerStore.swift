@@ -171,15 +171,35 @@ final class LedgerStore: ObservableObject {
         let category = categories(for: draft.kind).first(where: { $0.id == draft.selectedCategory.id }) ?? draft.selectedCategory
         let title = draft.note.isEmpty ? category.name : draft.note
 
+        addEntry(
+            kind: draft.kind,
+            amount: amount,
+            category: category,
+            paymentMethod: draft.paymentMethod,
+            note: draft.note,
+            title: title,
+            date: Date()
+        )
+    }
+
+    func addEntry(
+        kind: LedgerKind,
+        amount: Double,
+        category: LedgerCategory,
+        paymentMethod: String,
+        note: String,
+        title: String,
+        date: Date
+    ) {
         let entry = LedgerEntry(
             bookID: currentBook.id,
             title: title,
             amount: amount,
-            kind: draft.kind,
+            kind: kind,
             category: category,
-            paymentMethod: draft.paymentMethod,
-            note: draft.note,
-            date: Date()
+            paymentMethod: paymentMethod,
+            note: note,
+            date: date
         )
 
         entries.insert(entry, at: 0)
