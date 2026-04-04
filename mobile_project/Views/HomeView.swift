@@ -67,6 +67,7 @@ struct HomeView: View {
                 summaryCard
                 todayHeader
                 assistantCard
+                autoLedgerCard
                 transactionsCard
             }
             .padding(.horizontal, 20)
@@ -239,7 +240,7 @@ struct HomeView: View {
                         .font(.system(size: 20, weight: .bold, design: .rounded))
                         .foregroundStyle(Color.ledgerText)
 
-                    Text("试试输入“今天午饭 15 元，用支付宝支付”")
+                    Text("试试输入“今天午饭 15 元，用电子支付”")
                         .font(.system(size: 15, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.ledgerMuted)
                         .multilineTextAlignment(.leading)
@@ -261,6 +262,48 @@ struct HomeView: View {
 
                     Image(systemName: "message.and.waveform.fill")
                         .font(.system(size: 30, weight: .semibold))
+                        .foregroundStyle(Color.ledgerAccent)
+                }
+            }
+            .padding(22)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .ledgerCard()
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var autoLedgerCard: some View {
+        Button {
+            openScreen(.autoLedgerCenter)
+        } label: {
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("自动记账中心")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.ledgerText)
+
+                    Text("截图识别 -> AI 结构化 -> 人工确认后入账")
+                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.ledgerMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles")
+                        Text("支持快捷指令触发与审核保存")
+                    }
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.ledgerAccent)
+                }
+
+                Spacer()
+
+                ZStack {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(Color.ledgerAccentSoft.opacity(0.72))
+                        .frame(width: 86, height: 86)
+
+                    Image(systemName: "doc.text.viewfinder")
+                        .font(.system(size: 34, weight: .semibold))
                         .foregroundStyle(Color.ledgerAccent)
                 }
             }
@@ -424,6 +467,10 @@ struct HomeView: View {
             openScreen(.books)
         case "分类管理":
             openScreen(.categories)
+        case "自动记账", "自动记账中心":
+            openScreen(.autoLedgerCenter)
+        case "小组件", "桌面小组件":
+            openScreen(.widgets)
         default:
             highlightedFeature = feature
         }

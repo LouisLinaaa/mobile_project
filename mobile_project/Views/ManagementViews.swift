@@ -6,6 +6,8 @@ enum ManagementScreen: String, Identifiable {
     case assets
     case books
     case categories
+    case autoLedgerCenter
+    case widgets
 
     var id: String { rawValue }
 }
@@ -44,6 +46,10 @@ struct ManagementSheetView: View {
             BookManagementView()
         case .categories:
             CategoryManagementView()
+        case .autoLedgerCenter:
+            AutoLedgerCenterView()
+        case .widgets:
+            WidgetCenterView()
         }
     }
 }

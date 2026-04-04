@@ -15,6 +15,10 @@
 		A00000000000000000000006 /* DrawerMenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000016 /* DrawerMenuView.swift */; };
 		A00000000000000000000007 /* QuickAddSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000017 /* QuickAddSheet.swift */; };
 		A00000000000000000000008 /* ManagementViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000018 /* ManagementViews.swift */; };
+		A00000000000000000000009 /* AutoLedgerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000019 /* AutoLedgerModels.swift */; };
+		A0000000000000000000000A /* AutoLedgerFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001A /* AutoLedgerFlow.swift */; };
+		A0000000000000000000000B /* AutoLedgerCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001B /* AutoLedgerCenterView.swift */; };
+		A0000000000000000000000C /* WidgetCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001C /* WidgetCenterView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,6 +31,10 @@
 		A00000000000000000000016 /* DrawerMenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawerMenuView.swift; sourceTree = "<group>"; };
 		A00000000000000000000017 /* QuickAddSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickAddSheet.swift; sourceTree = "<group>"; };
 		A00000000000000000000018 /* ManagementViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagementViews.swift; sourceTree = "<group>"; };
+		A00000000000000000000019 /* AutoLedgerModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoLedgerModels.swift; sourceTree = "<group>"; };
+		A0000000000000000000001A /* AutoLedgerFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoLedgerFlow.swift; sourceTree = "<group>"; };
+		A0000000000000000000001B /* AutoLedgerCenterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoLedgerCenterView.swift; sourceTree = "<group>"; };
+		A0000000000000000000001C /* WidgetCenterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetCenterView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -71,6 +79,7 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000012 /* LedgerModels.swift */,
+				A00000000000000000000019 /* AutoLedgerModels.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -79,6 +88,7 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000013 /* LedgerStore.swift */,
+				A0000000000000000000001A /* AutoLedgerFlow.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -91,6 +101,8 @@
 				A00000000000000000000016 /* DrawerMenuView.swift */,
 				A00000000000000000000017 /* QuickAddSheet.swift */,
 				A00000000000000000000018 /* ManagementViews.swift */,
+				A0000000000000000000001B /* AutoLedgerCenterView.swift */,
+				A0000000000000000000001C /* WidgetCenterView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -171,6 +183,10 @@
 				A00000000000000000000006 /* DrawerMenuView.swift in Sources */,
 				A00000000000000000000007 /* QuickAddSheet.swift in Sources */,
 				A00000000000000000000008 /* ManagementViews.swift in Sources */,
+				A00000000000000000000009 /* AutoLedgerModels.swift in Sources */,
+				A0000000000000000000000A /* AutoLedgerFlow.swift in Sources */,
+				A0000000000000000000000B /* AutoLedgerCenterView.swift in Sources */,
+				A0000000000000000000000C /* WidgetCenterView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
