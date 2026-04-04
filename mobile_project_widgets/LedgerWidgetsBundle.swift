@@ -2,15 +2,23 @@ import SwiftUI
 import WidgetKit
 
 private enum LedgerWidgetKind {
-    static let todayExpense = "com.example.mobileproject.widget.today-expense"
-    static let budgetProgress = "com.example.mobileproject.widget.budget-progress"
-    static let quickAction = "com.example.mobileproject.widget.quick-action"
-    static let accountOverview = "com.example.mobileproject.widget.account-overview"
-    static let autoLedgerStatus = "com.example.mobileproject.widget.auto-ledger-status"
+    static let todayExpense = "com.github.louislinaa.ledgerlab.widget.today-expense"
+    static let budgetProgress = "com.github.louislinaa.ledgerlab.widget.budget-progress"
+    static let quickAction = "com.github.louislinaa.ledgerlab.widget.quick-action"
+    static let accountOverview = "com.github.louislinaa.ledgerlab.widget.account-overview"
+    static let autoLedgerStatus = "com.github.louislinaa.ledgerlab.widget.auto-ledger-status"
 }
 
 private enum WidgetShared {
-    static let appGroupID = "group.com.example.mobileproject"
+    static let defaultAppGroupID = "group.com.github.louislinaa.ledgerlab"
+    static let appGroupID: String = {
+        guard let configured = Bundle.main.object(forInfoDictionaryKey: "APP_GROUP_IDENTIFIER") as? String,
+              !configured.isEmpty,
+              !configured.contains("$(") else {
+            return defaultAppGroupID
+        }
+        return configured
+    }()
     static let snapshotDefaultsKey = "ledger.widget.snapshot.v1"
     static let deepLinkScheme = "ledgerapp"
 }

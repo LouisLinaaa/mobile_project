@@ -4,7 +4,15 @@ import WidgetKit
 #endif
 
 enum LedgerWidgetShared {
-    static let appGroupID = "group.com.example.mobileproject"
+    static let defaultAppGroupID = "group.com.github.louislinaa.ledgerlab"
+    static let appGroupID: String = {
+        guard let configured = Bundle.main.object(forInfoDictionaryKey: "APP_GROUP_IDENTIFIER") as? String,
+              !configured.isEmpty,
+              !configured.contains("$(") else {
+            return defaultAppGroupID
+        }
+        return configured
+    }()
     static let snapshotDefaultsKey = "ledger.widget.snapshot.v1"
     static let deepLinkScheme = "ledgerapp"
 }
@@ -52,11 +60,11 @@ enum LedgerWidgetSnapshotStore {
     private static var pendingReload: DispatchWorkItem?
     private static let reloadQueue = DispatchQueue(label: "ledger.widget.reload", qos: .utility)
     private static let widgetKinds = [
-        "com.example.mobileproject.widget.today-expense",
-        "com.example.mobileproject.widget.budget-progress",
-        "com.example.mobileproject.widget.quick-action",
-        "com.example.mobileproject.widget.account-overview",
-        "com.example.mobileproject.widget.auto-ledger-status"
+        "com.github.louislinaa.ledgerlab.widget.today-expense",
+        "com.github.louislinaa.ledgerlab.widget.budget-progress",
+        "com.github.louislinaa.ledgerlab.widget.quick-action",
+        "com.github.louislinaa.ledgerlab.widget.account-overview",
+        "com.github.louislinaa.ledgerlab.widget.auto-ledger-status"
     ]
 
     private static let encoder: JSONEncoder = {
