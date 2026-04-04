@@ -4,6 +4,12 @@ import SwiftUI
 final class LedgerStore: ObservableObject {
     @Published var isBalanceVisible = true
     @Published var isQuickAddPresented = false
+    @Published var appSettings: AppSettings {
+        didSet {
+            persistAppSettings()
+            syncWidgetSnapshot()
+        }
+    }
     @Published var budgetLimit: Double? {
         didSet { syncWidgetSnapshot() }
     }
@@ -23,6 +29,7 @@ final class LedgerStore: ObservableObject {
     @Published var selectedCategorySchemeID: UUID
 
     private let calendar = Calendar.current
+    private let appSettingsKey = "ledger.app.settings"
     private let bookIcons = [
         "book.closed.fill",
         "star.square.fill",
@@ -32,6 +39,7 @@ final class LedgerStore: ObservableObject {
 
     init() {
         let seed = LedgerStore.makeSeedData()
+        self.appSettings = AppSettings()
         self.budgetLimit = seed.budgetLimit
         self.entries = seed.entries
         self.books = seed.books
@@ -39,6 +47,7 @@ final class LedgerStore: ObservableObject {
         self.accounts = seed.accounts
         self.categorySchemes = seed.categorySchemes
         self.selectedCategorySchemeID = seed.selectedCategorySchemeID
+        self.appSettings = loadAppSettings()
         syncWidgetSnapshot()
     }
 
@@ -70,6 +79,10 @@ final class LedgerStore: ObservableObject {
 
     var currentMonthIncome: Double {
         monthlyTotal(kind: .income, for: currentBook.id)
+    }
+
+    var currentStatisticsMonthInterval: DateInterval {
+        makeStatisticsMonthInterval(for: Date())
     }
 
     var currentMonthBalance: Double {
@@ -147,6 +160,17 @@ final class LedgerStore: ObservableObject {
         return streak
     }
 
+    var assistantCardHint: String {
+        switch appSettings.assistantReplyStyle {
+        case .concise:
+            "简洁模式：我会先给结论，再补充必要信息。"
+        case .balanced:
+            "平衡模式：结论和说明都会保留，阅读节奏更稳。"
+        case .detailed:
+            "详细模式：会补充更多上下文与步骤，适合慢慢看。"
+        }
+    }
+
     func categories(for kind: LedgerKind) -> [LedgerCategory] {
         switch kind {
         case .expense:
@@ -216,6 +240,11 @@ final class LedgerStore: ObservableObject {
         entries.insert(entry, at: 0)
     }
 
+    func isInCurrentStatisticsMonth(_ date: Date) -> Bool {
+        let interval = currentStatisticsMonthInterval
+        return interval.contains(date)
+    }
+
     func setCurrentBook(_ book: LedgerBook) {
         selectedBookID = book.id
     }
@@ -228,6 +257,70 @@ final class LedgerStore: ObservableObject {
         if budgetLimit == nil {
             budgetLimit = 3600
         }
+    }
+
+    func setMonthStartDay(_ day: Int) {
+        updateSettings { settings in
+            settings.monthStartDay = min(max(day, 1), 28)
+        }
+    }
+
+    func setAssistantReplyStyle(_ style: AssistantReplyStyle) {
+        updateSettings { settings in
+            settings.assistantReplyStyle = style
+        }
+    }
+
+    func setPushEnabled(_ enabled: Bool) {
+        updateSettings { settings in
+            settings.pushEnabled = enabled
+            if !enabled {
+                settings.pushDailyLedger = false
+                settings.pushBudgetReminder = false
+                settings.pushFeatureRecommendation = false
+                settings.pushBillReview = false
+            } else if !settings.pushDailyLedger &&
+                !settings.pushBudgetReminder &&
+                !settings.pushFeatureRecommendation &&
+                !settings.pushBillReview {
+                settings.pushDailyLedger = true
+                settings.pushBudgetReminder = true
+                settings.pushFeatureRecommendation = true
+                settings.pushBillReview = true
+            }
+        }
+    }
+
+    func setPushSubItem(
+        dailyLedger: Bool? = nil,
+        budgetReminder: Bool? = nil,
+        featureRecommendation: Bool? = nil,
+        billReview: Bool? = nil
+    ) {
+        updateSettings { settings in
+            if let dailyLedger {
+                settings.pushDailyLedger = dailyLedger
+            }
+            if let budgetReminder {
+                settings.pushBudgetReminder = budgetReminder
+            }
+            if let featureRecommendation {
+                settings.pushFeatureRecommendation = featureRecommendation
+            }
+            if let billReview {
+                settings.pushBillReview = billReview
+            }
+
+            settings.pushEnabled =
+                settings.pushDailyLedger ||
+                settings.pushBudgetReminder ||
+                settings.pushFeatureRecommendation ||
+                settings.pushBillReview
+        }
+    }
+
+    func clearAllHistoryEntries() {
+        entries.removeAll()
     }
 
     func addBook(name: String, note: String) {
@@ -374,14 +467,33 @@ final class LedgerStore: ObservableObject {
     }
 
     private func monthlyTotal(kind: LedgerKind, for bookID: UUID) -> Double {
-        entries
+        let interval = currentStatisticsMonthInterval
+        return entries
             .filter { entry in
                 entry.bookID == bookID &&
                 entry.kind == kind &&
-                calendar.isDate(entry.date, equalTo: Date(), toGranularity: .month) &&
-                calendar.isDate(entry.date, equalTo: Date(), toGranularity: .year)
+                interval.contains(entry.date)
             }
             .reduce(0) { $0 + $1.amount }
+    }
+
+    private func makeStatisticsMonthInterval(for date: Date) -> DateInterval {
+        let startDay = min(max(appSettings.monthStartDay, 1), 28)
+        let day = calendar.component(.day, from: date)
+
+        let anchorDate: Date
+        if day < startDay {
+            anchorDate = calendar.date(byAdding: .month, value: -1, to: date) ?? date
+        } else {
+            anchorDate = date
+        }
+
+        var components = calendar.dateComponents([.year, .month], from: anchorDate)
+        components.day = startDay
+        let start = calendar.date(from: components) ?? calendar.startOfDay(for: date)
+        let end = calendar.date(byAdding: .month, value: 1, to: start) ?? date
+
+        return DateInterval(start: start, end: end)
     }
 
     private func uniqueStrings(_ values: [String]) -> [String] {
@@ -449,6 +561,25 @@ final class LedgerStore: ObservableObject {
         case .income:
             return "#4AAC84"
         }
+    }
+
+    private func updateSettings(_ transform: (inout AppSettings) -> Void) {
+        var settings = appSettings
+        transform(&settings)
+        appSettings = settings
+    }
+
+    private func loadAppSettings() -> AppSettings {
+        guard let data = UserDefaults.standard.data(forKey: appSettingsKey),
+              let settings = try? JSONDecoder().decode(AppSettings.self, from: data) else {
+            return AppSettings()
+        }
+        return settings
+    }
+
+    private func persistAppSettings() {
+        guard let data = try? JSONEncoder().encode(appSettings) else { return }
+        UserDefaults.standard.set(data, forKey: appSettingsKey)
     }
 
     private struct SeedState {

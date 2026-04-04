@@ -296,6 +296,75 @@ struct DrawerLinkItem: Identifiable {
     let showsBadge: Bool
 }
 
+enum AssistantReplyStyle: String, CaseIterable, Identifiable, Codable {
+    case concise
+    case balanced
+    case detailed
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .concise:
+            "简洁"
+        case .balanced:
+            "平衡"
+        case .detailed:
+            "详细"
+        }
+    }
+}
+
+struct AppSettings: Codable {
+    var monthStartDay: Int = 1
+    var assistantReplyStyle: AssistantReplyStyle = .balanced
+    var showRecordImages = true
+    var showLocation = true
+    var showOfferRecommendations = true
+    var hideSensitiveInfo = true
+    var pushEnabled = true
+    var pushDailyLedger = true
+    var pushBudgetReminder = true
+    var pushFeatureRecommendation = true
+    var pushBillReview = true
+
+    init() { }
+
+    var monthStartDayLabel: String {
+        "每月\(monthStartDay)日"
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case monthStartDay
+        case assistantReplyStyle
+        case showRecordImages
+        case showLocation
+        case showOfferRecommendations
+        case hideSensitiveInfo
+        case pushEnabled
+        case pushDailyLedger
+        case pushBudgetReminder
+        case pushFeatureRecommendation
+        case pushBillReview
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedMonthStartDay = try container.decodeIfPresent(Int.self, forKey: .monthStartDay) ?? 1
+        monthStartDay = min(max(decodedMonthStartDay, 1), 28)
+        assistantReplyStyle = try container.decodeIfPresent(AssistantReplyStyle.self, forKey: .assistantReplyStyle) ?? .balanced
+        showRecordImages = try container.decodeIfPresent(Bool.self, forKey: .showRecordImages) ?? true
+        showLocation = try container.decodeIfPresent(Bool.self, forKey: .showLocation) ?? true
+        showOfferRecommendations = try container.decodeIfPresent(Bool.self, forKey: .showOfferRecommendations) ?? true
+        hideSensitiveInfo = try container.decodeIfPresent(Bool.self, forKey: .hideSensitiveInfo) ?? true
+        pushEnabled = try container.decodeIfPresent(Bool.self, forKey: .pushEnabled) ?? true
+        pushDailyLedger = try container.decodeIfPresent(Bool.self, forKey: .pushDailyLedger) ?? true
+        pushBudgetReminder = try container.decodeIfPresent(Bool.self, forKey: .pushBudgetReminder) ?? true
+        pushFeatureRecommendation = try container.decodeIfPresent(Bool.self, forKey: .pushFeatureRecommendation) ?? true
+        pushBillReview = try container.decodeIfPresent(Bool.self, forKey: .pushBillReview) ?? true
+    }
+}
+
 extension LedgerCategory {
     static let expenseCategories: [LedgerCategory] = [
         LedgerCategory(id: "expense.meal", name: "餐饮", icon: "fork.knife.circle.fill", tintStyle: .expense, kind: .expense),
