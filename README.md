@@ -129,6 +129,20 @@ Open in Xcode:
 open mobile_project.xcodeproj
 ```
 
+### Widget debugging in Xcode
+
+- Use scheme `mobile_project` for normal app run/debug.
+- A shared scheme `mobile_project_widgets` is included and pre-configured with:
+  - `_XCWidgetKind=com.github.louislinaa.ledgerlab.widget.today-expense`
+- To debug another widget kind, edit:
+  - `Product -> Scheme -> Edit Scheme -> Run -> Arguments -> Environment Variables`
+  - Change `_XCWidgetKind` to one of:
+    - `com.github.louislinaa.ledgerlab.widget.today-expense`
+    - `com.github.louislinaa.ledgerlab.widget.budget-progress`
+    - `com.github.louislinaa.ledgerlab.widget.quick-action`
+    - `com.github.louislinaa.ledgerlab.widget.account-overview`
+    - `com.github.louislinaa.ledgerlab.widget.auto-ledger-status`
+
 ## Upcoming Milestones
 
 - [ ] Add persistent local storage (SwiftData)

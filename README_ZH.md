@@ -129,6 +129,20 @@ xcodebuild -project mobile_project.xcodeproj \
 open mobile_project.xcodeproj
 ```
 
+### 在 Xcode 中调试 Widget
+
+- 日常运行/调试 App 请使用 scheme `mobile_project`。
+- 仓库已提供共享 scheme `mobile_project_widgets`，并预置：
+  - `_XCWidgetKind=com.github.louislinaa.ledgerlab.widget.today-expense`
+- 如需切换调试其他 widget，进入：
+  - `Product -> Scheme -> Edit Scheme -> Run -> Arguments -> Environment Variables`
+  - 将 `_XCWidgetKind` 改成以下任一值：
+    - `com.github.louislinaa.ledgerlab.widget.today-expense`
+    - `com.github.louislinaa.ledgerlab.widget.budget-progress`
+    - `com.github.louislinaa.ledgerlab.widget.quick-action`
+    - `com.github.louislinaa.ledgerlab.widget.account-overview`
+    - `com.github.louislinaa.ledgerlab.widget.auto-ledger-status`
+
 ## 下一阶段计划
 
 - [ ] 接入本地持久化（SwiftData）
