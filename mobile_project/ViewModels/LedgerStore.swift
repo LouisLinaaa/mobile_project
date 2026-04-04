@@ -413,10 +413,7 @@ final class LedgerStore: ObservableObject {
             )
         }
         .sorted { $0.amount > $1.amount }
-        .prefix(3)
-
-        let postedCount = min(max(currentBookEntries.count, 0), 99)
-        let pendingCount = max(0, 3 - todayEntries.count)
+        .prefix(4)
 
         return LedgerWidgetSnapshot(
             generatedAt: Date(),
@@ -428,8 +425,8 @@ final class LedgerStore: ObservableObject {
             totalAssets: totalAssets,
             totalLiabilities: totalLiabilities,
             netWorth: netWorth,
-            autoLedgerPendingCount: pendingCount,
-            autoLedgerPostedCount: postedCount,
+            autoLedgerPendingCount: 0,
+            autoLedgerPostedCount: 0,
             autoLedgerFailedCount: 0,
             autoLedgerUpdatedAt: Date()
         )

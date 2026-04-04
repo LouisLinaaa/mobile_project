@@ -49,6 +49,16 @@ struct LedgerWidgetSnapshot: Codable {
 }
 
 enum LedgerWidgetSnapshotStore {
+    private static var pendingReload: DispatchWorkItem?
+    private static let reloadQueue = DispatchQueue(label: "ledger.widget.reload", qos: .utility)
+    private static let widgetKinds = [
+        "com.example.mobileproject.widget.today-expense",
+        "com.example.mobileproject.widget.budget-progress",
+        "com.example.mobileproject.widget.quick-action",
+        "com.example.mobileproject.widget.account-overview",
+        "com.example.mobileproject.widget.auto-ledger-status"
+    ]
+
     private static let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -69,7 +79,7 @@ enum LedgerWidgetSnapshotStore {
         guard let data = try? encoder.encode(snapshot) else { return }
         defaults.set(data, forKey: LedgerWidgetShared.snapshotDefaultsKey)
 #if canImport(WidgetKit)
-        WidgetCenter.shared.reloadAllTimelines()
+        scheduleReload()
 #endif
     }
 
@@ -80,4 +90,17 @@ enum LedgerWidgetSnapshotStore {
         }
         return snapshot
     }
+
+#if canImport(WidgetKit)
+    private static func scheduleReload() {
+        pendingReload?.cancel()
+        let workItem = DispatchWorkItem {
+            widgetKinds.forEach { kind in
+                WidgetCenter.shared.reloadTimelines(ofKind: kind)
+            }
+        }
+        pendingReload = workItem
+        reloadQueue.asyncAfter(deadline: .now() + 0.8, execute: workItem)
+    }
+#endif
 }
