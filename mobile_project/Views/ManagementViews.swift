@@ -8,6 +8,7 @@ enum ManagementScreen: String, Identifiable {
     case categories
     case autoLedgerCenter
     case widgets
+    case settings
 
     var id: String { rawValue }
 }
@@ -50,6 +51,8 @@ struct ManagementSheetView: View {
             AutoLedgerCenterView()
         case .widgets:
             WidgetCenterView()
+        case .settings:
+            SettingsView()
         }
     }
 }
@@ -89,8 +92,7 @@ struct StatisticsView: View {
                 let start = Calendar.current.date(byAdding: .day, value: -6, to: Calendar.current.startOfDay(for: Date())) ?? Date()
                 return entry.date >= start
             case .month:
-                return Calendar.current.isDate(entry.date, equalTo: Date(), toGranularity: .month) &&
-                    Calendar.current.isDate(entry.date, equalTo: Date(), toGranularity: .year)
+                return store.isInCurrentStatisticsMonth(entry.date)
             }
         }
     }
@@ -122,13 +124,12 @@ struct StatisticsView: View {
                 calendar.date(byAdding: .day, value: -6 + $0, to: calendar.startOfDay(for: Date()))
             }
         case .month:
-            let current = Date()
-            let count = calendar.range(of: .day, in: .month, for: current)?.count ?? 30
-            let year = calendar.component(.year, from: current)
-            let month = calendar.component(.month, from: current)
+            let interval = store.currentStatisticsMonthInterval
+            let start = calendar.startOfDay(for: interval.start)
+            let dayCount = calendar.dateComponents([.day], from: start, to: interval.end).day ?? 30
 
-            dates = (1...count).compactMap { day in
-                calendar.date(from: DateComponents(year: year, month: month, day: day))
+            dates = (0..<max(dayCount, 1)).compactMap { offset in
+                calendar.date(byAdding: .day, value: offset, to: start)
             }
         }
 
@@ -1342,6 +1343,414 @@ private struct SchemeMetric: View {
                 Text(value)
                     .font(.system(size: 16, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.ledgerText)
+            }
+        }
+    }
+}
+
+struct SettingsView: View {
+    @EnvironmentObject private var store: LedgerStore
+
+    @State private var isDeleteAlertPresented = false
+    @State private var isHelpPresented = false
+    @State private var isAboutPresented = false
+
+    private let monthStartDayOptions = Array(1...28)
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 18) {
+                displaySettingsCard
+                pushSettingsCard
+                serviceCard
+                dangerCard
+            }
+            .padding(20)
+            .padding(.bottom, 24)
+        }
+        .background(
+            LinearGradient(
+                colors: [Color.ledgerAccentSoft.opacity(0.42), Color.ledgerCanvas],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+        )
+        .navigationTitle("设置")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $isHelpPresented) {
+            HelpFeedbackView()
+        }
+        .sheet(isPresented: $isAboutPresented) {
+            AboutAppView()
+        }
+        .alert("确认删除历史账单？", isPresented: $isDeleteAlertPresented) {
+            Button("删除", role: .destructive) {
+                store.clearAllHistoryEntries()
+            }
+            Button("取消", role: .cancel) { }
+        } message: {
+            Text("这会清空当前本地账单记录，但不会删除账本、账户和分类设置。")
+        }
+    }
+
+    private var displaySettingsCard: some View {
+        VStack(spacing: 0) {
+            SettingSelectRow(
+                title: "月统计起始日",
+                value: store.appSettings.monthStartDayLabel
+            ) {
+                ForEach(monthStartDayOptions, id: \.self) { day in
+                    Button("每月\(day)日") {
+                        store.setMonthStartDay(day)
+                    }
+                }
+            }
+
+            Divider().padding(.leading, 18)
+
+            SettingSelectRow(
+                title: "助手回复风格",
+                value: store.appSettings.assistantReplyStyle.title
+            ) {
+                ForEach(AssistantReplyStyle.allCases) { style in
+                    Button(style.title) {
+                        store.setAssistantReplyStyle(style)
+                    }
+                }
+            }
+
+            Divider().padding(.leading, 18)
+
+            SettingToggleRow(
+                title: "展示记录图片",
+                subtitle: "用于自动记账回看截图",
+                isOn: Binding(
+                    get: { store.appSettings.showRecordImages },
+                    set: { store.appSettings.showRecordImages = $0 }
+                )
+            )
+
+            Divider().padding(.leading, 18)
+
+            SettingToggleRow(
+                title: "地点展示",
+                subtitle: "允许在账单中展示地点字段",
+                isOn: Binding(
+                    get: { store.appSettings.showLocation },
+                    set: { store.appSettings.showLocation = $0 }
+                )
+            )
+
+            Divider().padding(.leading, 18)
+
+            SettingToggleRow(
+                title: "优惠推荐",
+                subtitle: "控制首页推荐卡片展示",
+                isOn: Binding(
+                    get: { store.appSettings.showOfferRecommendations },
+                    set: { store.appSettings.showOfferRecommendations = $0 }
+                )
+            )
+
+            Divider().padding(.leading, 18)
+
+            SettingToggleRow(
+                title: "去敏展示",
+                subtitle: "隐藏金额和支付方式",
+                isOn: Binding(
+                    get: { store.appSettings.hideSensitiveInfo },
+                    set: { store.appSettings.hideSensitiveInfo = $0 }
+                )
+            )
+        }
+        .ledgerCard()
+    }
+
+    private var pushSettingsCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SettingToggleRow(
+                title: "推送服务",
+                subtitle: "总开关会联动下方提醒项",
+                isOn: Binding(
+                    get: { store.appSettings.pushEnabled },
+                    set: { store.setPushEnabled($0) }
+                )
+            )
+            .padding(.horizontal, 18)
+            .padding(.top, 18)
+
+            VStack(spacing: 0) {
+                SettingCheckRow(
+                    title: "每日记账",
+                    isChecked: Binding(
+                        get: { store.appSettings.pushDailyLedger },
+                        set: { store.setPushSubItem(dailyLedger: $0) }
+                    )
+                )
+                Divider().padding(.leading, 18)
+
+                SettingCheckRow(
+                    title: "预算提醒",
+                    isChecked: Binding(
+                        get: { store.appSettings.pushBudgetReminder },
+                        set: { store.setPushSubItem(budgetReminder: $0) }
+                    )
+                )
+                Divider().padding(.leading, 18)
+
+                SettingCheckRow(
+                    title: "功能推荐",
+                    isChecked: Binding(
+                        get: { store.appSettings.pushFeatureRecommendation },
+                        set: { store.setPushSubItem(featureRecommendation: $0) }
+                    )
+                )
+                Divider().padding(.leading, 18)
+
+                SettingCheckRow(
+                    title: "账单回顾",
+                    isChecked: Binding(
+                        get: { store.appSettings.pushBillReview },
+                        set: { store.setPushSubItem(billReview: $0) }
+                    )
+                )
+            }
+            .background(Color.ledgerAccentMuted.opacity(0.4))
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .padding(12)
+            .opacity(store.appSettings.pushEnabled ? 1 : 0.45)
+            .disabled(!store.appSettings.pushEnabled)
+        }
+        .ledgerCard()
+    }
+
+    private var serviceCard: some View {
+        VStack(spacing: 0) {
+            SettingActionRow(title: "帮助与反馈") { isHelpPresented = true }
+            Divider().padding(.leading, 18)
+            SettingActionRow(title: "关于 App") { isAboutPresented = true }
+        }
+        .ledgerCard()
+    }
+
+    private var dangerCard: some View {
+        Button(role: .destructive) {
+            isDeleteAlertPresented = true
+        } label: {
+            HStack {
+                Text("删除所有历史账单数据")
+                    .font(.system(size: 18, weight: .medium, design: .rounded))
+                Spacer()
+                Text("删除")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+            }
+            .foregroundStyle(Color.red)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 20)
+        }
+        .buttonStyle(.plain)
+        .ledgerCard()
+    }
+}
+
+private struct SettingToggleRow: View {
+    let title: String
+    let subtitle: String?
+    @Binding var isOn: Bool
+
+    var body: some View {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 20, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.ledgerText)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.ledgerMuted)
+                }
+            }
+            Spacer()
+            Toggle("", isOn: $isOn)
+                .labelsHidden()
+                .tint(Color.ledgerAccent)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+    }
+}
+
+private struct SettingSelectRow<MenuContent: View>: View {
+    let title: String
+    let value: String
+    let menuContent: MenuContent
+
+    init(title: String, value: String, @ViewBuilder menuContent: () -> MenuContent) {
+        self.title = title
+        self.value = value
+        self.menuContent = menuContent()
+    }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Text(title)
+                .font(.system(size: 20, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+            Spacer()
+            Menu {
+                menuContent
+            } label: {
+                HStack(spacing: 6) {
+                    Text(value)
+                        .font(.system(size: 17, weight: .medium, design: .rounded))
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .bold))
+                }
+                .foregroundStyle(Color.ledgerMuted)
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 20)
+    }
+}
+
+private struct SettingCheckRow: View {
+    let title: String
+    @Binding var isChecked: Bool
+
+    var body: some View {
+        Button {
+            isChecked.toggle()
+        } label: {
+            HStack {
+                Text(title)
+                    .font(.system(size: 20, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.ledgerText)
+                Spacer()
+                Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 32, weight: .semibold))
+                    .foregroundStyle(isChecked ? Color.ledgerAccent : Color.ledgerMuted.opacity(0.6))
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 18)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct SettingActionRow: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Text(title)
+                    .font(.system(size: 20, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.ledgerText)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.ledgerMuted)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 20)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct HelpFeedbackView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    infoCard(
+                        title: "常见问题",
+                        message: "1. 数据默认只保存在本机。\n2. 删除账单后无法恢复。\n3. 月统计起始日会影响预算与图表。"
+                    )
+                    infoCard(
+                        title: "反馈方式",
+                        message: "你可以把问题截图、复现步骤和系统版本整理后提交给产品团队。"
+                    )
+                }
+                .padding(20)
+            }
+            .background(Color.ledgerCanvas.ignoresSafeArea())
+            .navigationTitle("帮助与反馈")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func infoCard(title: String, message: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.system(size: 19, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+            Text(message)
+                .font(.system(size: 15, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.ledgerMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(18)
+        .ledgerCard()
+    }
+}
+
+private struct AboutAppView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    private var versionDescription: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        return "v\(version) (\(build))"
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("本地记账")
+                        .font(.system(size: 24, weight: .black, design: .rounded))
+                        .foregroundStyle(Color.ledgerText)
+                    Text("专注记录效率与隐私保护的轻量记账应用。")
+                        .font(.system(size: 16, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.ledgerMuted)
+                }
+                .padding(18)
+                .ledgerCard()
+
+                HStack {
+                    Text("当前版本")
+                        .font(.system(size: 17, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.ledgerText)
+                    Spacer()
+                    Text(versionDescription)
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.ledgerMuted)
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 16)
+                .ledgerCard()
+
+                Spacer()
+            }
+            .padding(20)
+            .background(Color.ledgerCanvas.ignoresSafeArea())
+            .navigationTitle("关于 App")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { dismiss() }
+                }
             }
         }
     }

@@ -7,6 +7,10 @@ struct HomeView: View {
     @State private var activeScreen: ManagementScreen?
     @State private var highlightedFeature: String?
 
+    private var isSensitiveInfoVisible: Bool {
+        store.isBalanceVisible && !store.appSettings.hideSensitiveInfo
+    }
+
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
@@ -67,7 +71,9 @@ struct HomeView: View {
                 topBar
                 summaryCard
                 todayHeader
-                assistantCard
+                if store.appSettings.showOfferRecommendations {
+                    assistantCard
+                }
                 autoLedgerCard
                 transactionsCard
             }
@@ -128,14 +134,16 @@ struct HomeView: View {
                         .foregroundStyle(Color.ledgerMuted)
 
                     Button {
+                        guard !store.appSettings.hideSensitiveInfo else { return }
                         withAnimation(.easeInOut(duration: 0.18)) {
                             store.isBalanceVisible.toggle()
                         }
                     } label: {
-                        Image(systemName: store.isBalanceVisible ? "eye.fill" : "eye.slash.fill")
+                        Image(systemName: store.appSettings.hideSensitiveInfo ? "lock.fill" : (store.isBalanceVisible ? "eye.fill" : "eye.slash.fill"))
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Color.ledgerAccent)
                     }
+                    .disabled(store.appSettings.hideSensitiveInfo)
                 }
 
                 Spacer()
@@ -164,7 +172,7 @@ struct HomeView: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 72)
 
-                Text(store.isBalanceVisible ? LedgerFormatters.currency(store.currentMonthExpense) : "¥••••")
+                Text(isSensitiveInfoVisible ? LedgerFormatters.currency(store.currentMonthExpense) : "¥••••")
                     .font(.system(size: 34, weight: .black, design: .rounded))
                     .foregroundStyle(Color.ledgerText)
                     .lineLimit(1)
@@ -173,14 +181,18 @@ struct HomeView: View {
             }
 
             HStack(spacing: 12) {
-                SummaryNumber(title: "收入", value: store.currentMonthIncome, isVisible: store.isBalanceVisible)
-                SummaryNumber(title: "结余", value: store.currentMonthBalance, isVisible: store.isBalanceVisible)
+                SummaryNumber(title: "收入", value: store.currentMonthIncome, isVisible: isSensitiveInfoVisible)
+                SummaryNumber(title: "结余", value: store.currentMonthBalance, isVisible: isSensitiveInfoVisible)
             }
 
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .center, spacing: 18) {
                     budgetDetails
-                    BudgetRingView(progress: store.budgetProgress, budgetLimit: store.budgetLimit)
+                    BudgetRingView(
+                        progress: store.budgetProgress,
+                        budgetLimit: store.budgetLimit,
+                        isSensitiveVisible: isSensitiveInfoVisible
+                    )
                         .frame(width: 110, height: 110)
                 }
 
@@ -188,7 +200,11 @@ struct HomeView: View {
                     budgetDetails
                     HStack {
                         Spacer()
-                        BudgetRingView(progress: store.budgetProgress, budgetLimit: store.budgetLimit)
+                        BudgetRingView(
+                            progress: store.budgetProgress,
+                            budgetLimit: store.budgetLimit,
+                            isSensitiveVisible: isSensitiveInfoVisible
+                        )
                             .frame(width: 118, height: 118)
                         Spacer()
                     }
@@ -248,7 +264,7 @@ struct HomeView: View {
 
                     HStack(spacing: 8) {
                         Image(systemName: "sparkles")
-                        Text("先用本地表单录入，后面再扩展智能识别")
+                        Text(store.assistantCardHint)
                     }
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.ledgerAccent)
@@ -283,14 +299,14 @@ struct HomeView: View {
                         .font(.system(size: 20, weight: .bold, design: .rounded))
                         .foregroundStyle(Color.ledgerText)
 
-                    Text("截图识别 -> AI 结构化 -> 人工确认后入账")
+                    Text(store.appSettings.showRecordImages ? "截图识别 -> AI 结构化 -> 人工确认后入账" : "截图识别 -> AI 结构化（图片仅用于解析，不回显）")
                         .font(.system(size: 15, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.ledgerMuted)
                         .fixedSize(horizontal: false, vertical: true)
 
                     HStack(spacing: 6) {
                         Image(systemName: "sparkles")
-                        Text("支持快捷指令触发与审核保存")
+                        Text(store.appSettings.showLocation ? "支持快捷指令触发，审核时展示地点字段" : "支持快捷指令触发与审核保存")
                     }
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.ledgerAccent)
@@ -380,7 +396,7 @@ struct HomeView: View {
             } else {
                 VStack(spacing: 12) {
                     ForEach(store.todayEntries) { entry in
-                        TransactionRow(entry: entry)
+                        TransactionRow(entry: entry, isSensitiveVisible: isSensitiveInfoVisible)
                     }
                 }
             }
@@ -472,6 +488,8 @@ struct HomeView: View {
             openScreen(.autoLedgerCenter)
         case "小组件", "桌面小组件":
             openScreen(.widgets)
+        case "设置", "数据备份", "隐私与安全":
+            openScreen(.settings)
         default:
             highlightedFeature = feature
         }
@@ -480,6 +498,10 @@ struct HomeView: View {
     private var budgetDescription: String {
         guard let budgetLimit = store.budgetLimit else {
             return "还没设置预算，数据默认只保存在本机。"
+        }
+
+        if !isSensitiveInfoVisible {
+            return "去敏展示已开启，预算金额默认隐藏。"
         }
 
         let remaining = max(0, budgetLimit - store.currentMonthExpense)
@@ -579,6 +601,7 @@ private struct SummaryNumber: View {
 private struct BudgetRingView: View {
     let progress: Double
     let budgetLimit: Double?
+    let isSensitiveVisible: Bool
 
     var body: some View {
         ZStack {
@@ -604,7 +627,7 @@ private struct BudgetRingView: View {
                         .font(.system(size: 14, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.ledgerMuted)
 
-                    Text(LedgerFormatters.currency(budgetLimit))
+                    Text(isSensitiveVisible ? LedgerFormatters.currency(budgetLimit) : "¥••••")
                         .font(.system(size: 15, weight: .bold, design: .rounded))
                         .foregroundStyle(Color.ledgerText)
                 } else {
@@ -646,6 +669,7 @@ private struct BudgetProgressBar: View {
 
 private struct TransactionRow: View {
     let entry: LedgerEntry
+    let isSensitiveVisible: Bool
 
     var body: some View {
         HStack(spacing: 14) {
@@ -664,14 +688,18 @@ private struct TransactionRow: View {
                     .font(.system(size: 17, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.ledgerText)
 
-                Text("\(entry.paymentMethod) · \(LedgerFormatters.entryTime(for: entry.date))")
+                Text("\(isSensitiveVisible ? entry.paymentMethod : "支付方式已隐藏") · \(LedgerFormatters.entryTime(for: entry.date))")
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(Color.ledgerMuted)
             }
 
             Spacer()
 
-            Text(entry.kind == .expense ? "-\(LedgerFormatters.currency(entry.amount))" : "+\(LedgerFormatters.currency(entry.amount))")
+            Text(
+                isSensitiveVisible
+                    ? (entry.kind == .expense ? "-\(LedgerFormatters.currency(entry.amount))" : "+\(LedgerFormatters.currency(entry.amount))")
+                    : (entry.kind == .expense ? "-¥••••" : "+¥••••")
+            )
                 .font(.system(size: 17, weight: .bold, design: .rounded))
                 .foregroundStyle(entry.kind == .expense ? Color.ledgerExpense : Color.ledgerIncome)
         }
