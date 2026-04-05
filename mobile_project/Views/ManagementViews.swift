@@ -1803,8 +1803,10 @@ private struct SettingActionRow: View {
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(Color.ledgerMuted)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, SettingsLayout.rowHorizontalPadding)
             .padding(.vertical, SettingsLayout.rowVerticalPadding)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
