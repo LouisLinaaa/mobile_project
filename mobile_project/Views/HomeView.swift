@@ -1,14 +1,25 @@
 import SwiftUI
 
 struct HomeView: View {
+    private enum HomePrimaryTab: String {
+        case ledger = "记账"
+        case calendar = "日历"
+    }
+
     @EnvironmentObject private var store: LedgerStore
 
     @State private var isDrawerPresented = false
+    @State private var activeHomeTab: HomePrimaryTab = .ledger
     @State private var activeScreen: ManagementScreen?
     @State private var highlightedFeature: String?
 
     private var isSensitiveInfoVisible: Bool {
         store.isBalanceVisible && !store.appSettings.hideSensitiveInfo
+    }
+
+    private var selectedDrawerDestination: DrawerDestination? {
+        guard let activeScreen else { return nil }
+        return .screen(activeScreen)
     }
 
     var body: some View {
@@ -18,37 +29,32 @@ struct HomeView: View {
                     .ignoresSafeArea()
 
                 mainContent
-                    .blur(radius: isDrawerPresented ? 5 : 0)
+                    .blur(radius: isDrawerPresented ? 3 : 0)
                     .overlay {
                         if isDrawerPresented {
-                            Color.black.opacity(0.18)
+                            Color.black.opacity(0.10)
                                 .ignoresSafeArea()
                                 .onTapGesture {
-                                    withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
-                                        isDrawerPresented = false
-                                    }
+                                    closeDrawer()
                                 }
                         }
                     }
 
                 if isDrawerPresented {
                     DrawerMenuView(
-                        width: min(proxy.size.width * 0.86, 360),
-                        recordedDays: store.monthRecordedDays,
-                        totalRecordDays: store.totalRecordDays,
-                        totalRecords: store.totalRecords,
-                        streak: store.currentStreak,
-                        onShortcutTap: presentPlaceholderFeature(_:),
+                        width: min(proxy.size.width * 0.72, 300),
+                        topSafeInset: proxy.safeAreaInsets.top,
+                        selectedDestination: selectedDrawerDestination,
+                        onShortcutTap: handleDrawerDestination(_:),
                         onClose: {
-                            withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
-                                isDrawerPresented = false
-                            }
+                            closeDrawer()
                         }
                     )
                     .transition(.move(edge: .leading).combined(with: .opacity))
                     .zIndex(1)
                 }
             }
+            .animation(.spring(response: 0.32, dampingFraction: 0.9), value: isDrawerPresented)
         }
         .sheet(isPresented: $store.isQuickAddPresented) {
             QuickAddSheet(store: store)
@@ -67,18 +73,22 @@ struct HomeView: View {
 
     private var mainContent: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 16) {
                 topBar
-                summaryCard
-                todayHeader
-                if store.appSettings.showOfferRecommendations {
-                    assistantCard
+                if activeHomeTab == .ledger {
+                    summaryCard
+                    todayHeader
+                    if store.appSettings.showOfferRecommendations {
+                        assistantCard
+                    }
+                    autoLedgerCard
+                    transactionsCard
+                } else {
+                    calendarOverviewPage
                 }
-                autoLedgerCard
-                transactionsCard
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 14)
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
             .padding(.bottom, 128)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -86,36 +96,89 @@ struct HomeView: View {
         }
     }
 
+    private var daysInCurrentMonth: Int {
+        Calendar.current.range(of: .day, in: .month, for: Date())?.count ?? 30
+    }
+
+    private var calendarOverviewPage: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text(LedgerFormatters.drawerMonthTitle(for: Date()))
+                        .font(.system(size: 28, weight: .black, design: .rounded))
+                        .foregroundStyle(Color.ledgerText)
+
+                    Spacer()
+
+                    Text("独立日历")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.ledgerMuted)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.ledgerAccentMuted.opacity(0.75))
+                        .clipShape(Capsule())
+                }
+
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5), spacing: 8) {
+                    ForEach(1...daysInCurrentMonth, id: \.self) { day in
+                        let isToday = day == Calendar.current.component(.day, from: Date())
+                        let hasRecord = store.monthRecordedDays.contains(day)
+
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(hasRecord ? Color.ledgerAccentSoft : Color.ledgerCanvas)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .stroke(isToday ? Color.ledgerAccent : Color.clear, lineWidth: 2)
+                                )
+
+                            Text(isToday ? "今" : "\(day)")
+                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .foregroundStyle(hasRecord || isToday ? Color.ledgerAccent : Color.ledgerMuted.opacity(0.8))
+                        }
+                        .frame(height: 46)
+                    }
+                }
+
+                HStack {
+                    CalendarStatItem(value: "\(store.totalRecordDays)天", title: "坚持记录")
+                    Spacer()
+                    CalendarStatItem(value: "\(store.totalRecords)条", title: "总记录")
+                    Spacer()
+                    CalendarStatItem(value: "\(store.currentStreak)天", title: "连续记录")
+                }
+            }
+            .padding(16)
+            .ledgerCard()
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("今天建议")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.ledgerText)
+                Text("把本月预算回顾、周期账单和提醒统一放到这个日历页，日常记账页保持更专注。")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.ledgerMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(16)
+            .ledgerCard()
+        }
+    }
+
     private var topBar: some View {
         HStack(alignment: .center, spacing: 14) {
             Button {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
-                    isDrawerPresented = true
-                }
+                openDrawer()
             } label: {
                 Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(Color.ledgerMuted)
-                    .frame(width: 42, height: 42)
+                    .frame(width: 38, height: 38)
                     .background(.white.opacity(0.75))
                     .clipShape(Circle())
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("记账")
-                    .font(.system(size: 28, weight: .black, design: .rounded))
-                    .foregroundStyle(Color.ledgerText)
-                    .overlay(alignment: .bottomLeading) {
-                        Capsule()
-                            .fill(Color.ledgerAccent)
-                            .frame(width: 66, height: 4)
-                            .offset(y: 8)
-                    }
-
-                Text("本地速记")
-                    .font(.system(size: 14, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color.ledgerMuted)
-            }
+            homeTabSwitcher
 
             Spacer()
 
@@ -125,12 +188,45 @@ struct HomeView: View {
         }
     }
 
+    private var homeTabSwitcher: some View {
+        HStack(spacing: 6) {
+            homeTabItem(.ledger, icon: "wallet.pass")
+            homeTabItem(.calendar, icon: "calendar")
+        }
+        .padding(4)
+        .background(.white.opacity(0.86))
+        .clipShape(Capsule())
+    }
+
+    private func homeTabItem(_ tab: HomePrimaryTab, icon: String) -> some View {
+        let isActive = activeHomeTab == tab
+        return Button {
+            guard activeHomeTab != tab else { return }
+            withAnimation(.easeInOut(duration: 0.2)) {
+                activeHomeTab = tab
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(tab.rawValue)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+            }
+            .foregroundStyle(isActive ? Color.ledgerText : Color.ledgerMuted)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(isActive ? Color.ledgerAccentSoft.opacity(0.95) : Color.clear)
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
     private var summaryCard: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack {
                 HStack(spacing: 10) {
                     Text("统计周期支出")
-                        .font(.system(size: 18, weight: .medium, design: .rounded))
+                        .font(.system(size: 16, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.ledgerMuted)
 
                     Button {
@@ -151,33 +247,33 @@ struct HomeView: View {
                 Button {
                     openScreen(.statistics)
                 } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "chart.pie.fill")
-                        Text("统计")
-                            .font(.system(size: 16, weight: .semibold, design: .rounded))
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 12, weight: .bold))
+                        HStack(spacing: 8) {
+                            Image(systemName: "chart.pie.fill")
+                            Text("统计")
+                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12, weight: .bold))
+                        }
+                        .foregroundStyle(Color.ledgerText)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color.ledgerAccentSoft.opacity(0.85))
+                        .clipShape(Capsule())
                     }
-                    .foregroundStyle(Color.ledgerText)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color.ledgerAccentSoft.opacity(0.85))
-                    .clipShape(Capsule())
-                }
             }
 
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
                     .stroke(Color.ledgerAccentSoft, lineWidth: 4)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 72)
+                    .frame(height: 64)
 
                 Text(isSensitiveInfoVisible ? LedgerFormatters.currency(store.currentMonthExpense) : "¥••••")
-                    .font(.system(size: 34, weight: .black, design: .rounded))
+                    .font(.system(size: 30, weight: .black, design: .rounded))
                     .foregroundStyle(Color.ledgerText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
-                    .padding(.horizontal, 22)
+                    .padding(.horizontal, 18)
             }
 
             HStack(spacing: 12) {
@@ -193,7 +289,7 @@ struct HomeView: View {
                         budgetLimit: store.budgetLimit,
                         isSensitiveVisible: isSensitiveInfoVisible
                     )
-                        .frame(width: 110, height: 110)
+                        .frame(width: 100, height: 100)
                 }
 
                 VStack(alignment: .leading, spacing: 18) {
@@ -205,13 +301,13 @@ struct HomeView: View {
                             budgetLimit: store.budgetLimit,
                             isSensitiveVisible: isSensitiveInfoVisible
                         )
-                            .frame(width: 118, height: 118)
+                            .frame(width: 108, height: 108)
                         Spacer()
                     }
                 }
             }
         }
-        .padding(22)
+        .padding(18)
         .background(
             RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .fill(
@@ -228,7 +324,7 @@ struct HomeView: View {
     private var todayHeader: some View {
         HStack(alignment: .center) {
             Text(LedgerFormatters.todayHeadline(for: Date()))
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.system(size: 19, weight: .bold, design: .rounded))
                 .foregroundStyle(Color.ledgerText)
 
             Spacer()
@@ -237,9 +333,9 @@ struct HomeView: View {
                 store.isQuickAddPresented = true
             } label: {
                 Image(systemName: "banknote")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.ledgerAccent)
-                    .frame(width: 42, height: 42)
+                    .frame(width: 38, height: 38)
                     .background(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 4)
@@ -251,14 +347,14 @@ struct HomeView: View {
         Button {
             store.isQuickAddPresented = true
         } label: {
-            HStack(spacing: 18) {
-                VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text("一句话快速记账")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
                         .foregroundStyle(Color.ledgerText)
 
                     Text("试试输入“今天午饭 15 元，用电子支付”")
-                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.ledgerMuted)
                         .multilineTextAlignment(.leading)
 
@@ -266,7 +362,7 @@ struct HomeView: View {
                         Image(systemName: "sparkles")
                         Text(store.assistantCardHint)
                     }
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.ledgerAccent)
                 }
 
@@ -275,14 +371,14 @@ struct HomeView: View {
                 ZStack {
                     Circle()
                         .fill(Color.ledgerAccentSoft.opacity(0.65))
-                        .frame(width: 80, height: 80)
+                        .frame(width: 66, height: 66)
 
                     Image(systemName: "message.and.waveform.fill")
-                        .font(.system(size: 30, weight: .semibold))
+                        .font(.system(size: 26, weight: .semibold))
                         .foregroundStyle(Color.ledgerAccent)
                 }
             }
-            .padding(22)
+            .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
             .ledgerCard()
         }
@@ -293,14 +389,14 @@ struct HomeView: View {
         Button {
             openScreen(.autoLedgerCenter)
         } label: {
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text("自动记账中心")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
                         .foregroundStyle(Color.ledgerText)
 
                     Text(store.appSettings.showRecordImages ? "截图识别 -> AI 结构化 -> 人工确认后入账" : "截图识别 -> AI 结构化（图片仅用于解析，不回显）")
-                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.ledgerMuted)
                         .fixedSize(horizontal: false, vertical: true)
 
@@ -308,7 +404,7 @@ struct HomeView: View {
                         Image(systemName: "sparkles")
                         Text(store.appSettings.showLocation ? "支持快捷指令触发，审核时展示地点字段" : "支持快捷指令触发与审核保存")
                     }
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.ledgerAccent)
                 }
 
@@ -317,14 +413,14 @@ struct HomeView: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
                         .fill(Color.ledgerAccentSoft.opacity(0.72))
-                        .frame(width: 86, height: 86)
+                        .frame(width: 70, height: 70)
 
                     Image(systemName: "doc.text.viewfinder")
-                        .font(.system(size: 34, weight: .semibold))
+                        .font(.system(size: 28, weight: .semibold))
                         .foregroundStyle(Color.ledgerAccent)
                 }
             }
-            .padding(22)
+            .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
             .ledgerCard()
         }
@@ -364,17 +460,17 @@ struct HomeView: View {
     }
 
     private var transactionsCard: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("今日流水")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.ledgerText)
 
                 Spacer()
 
                 if !store.todayEntries.isEmpty {
                     Text("\(store.todayEntries.count) 笔")
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.ledgerMuted)
                 }
             }
@@ -382,15 +478,15 @@ struct HomeView: View {
             if store.todayEntries.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("今天还没有记录")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
                         .foregroundStyle(Color.ledgerText)
 
                     Text("先点底部输入条或上方快捷卡片，录入第一笔本地账单。")
-                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.ledgerMuted)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(18)
+                .padding(14)
                 .background(Color.ledgerAccentMuted.opacity(0.7))
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             } else {
@@ -401,22 +497,24 @@ struct HomeView: View {
                 }
             }
         }
-        .padding(22)
+        .padding(18)
         .ledgerCard()
     }
 
     private var quickEntryDock: some View {
         HStack(spacing: 12) {
-            Button {
-                presentPlaceholderFeature("搜索")
-            } label: {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(Color.ledgerText)
-                    .frame(width: 56, height: 56)
-                    .background(.white.opacity(0.96))
-                    .clipShape(Circle())
-                    .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 6)
+            if activeHomeTab == .ledger {
+                Button {
+                    handleDrawerDestination(.placeholder("搜索"))
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Color.ledgerText)
+                        .frame(width: 50, height: 50)
+                        .background(.white.opacity(0.96))
+                        .clipShape(Circle())
+                        .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 6)
+                }
             }
 
             Button {
@@ -424,15 +522,15 @@ struct HomeView: View {
             } label: {
                 HStack(spacing: 12) {
                     Image(systemName: "plus")
-                        .font(.system(size: 24, weight: .medium))
+                        .font(.system(size: 20, weight: .medium))
                         .foregroundStyle(Color.ledgerText)
 
                     Text("记一笔")
-                        .font(.system(size: 19, weight: .semibold, design: .rounded))
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.ledgerText)
 
                     Text("金额、分类、备注")
-                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.ledgerMuted)
                         .lineLimit(1)
 
@@ -442,16 +540,16 @@ struct HomeView: View {
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundStyle(Color.ledgerAccent)
                 }
-                .padding(.horizontal, 20)
-                .frame(height: 60)
+                .padding(.horizontal, 16)
+                .frame(height: 54)
                 .background(.white.opacity(0.96))
                 .clipShape(Capsule())
                 .shadow(color: Color.black.opacity(0.06), radius: 14, x: 0, y: 8)
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
+        .padding(.horizontal, 14)
+        .padding(.top, 8)
         .padding(.bottom, 8)
         .background(
             LinearGradient(
@@ -474,23 +572,11 @@ struct HomeView: View {
         )
     }
 
-    private func presentPlaceholderFeature(_ feature: String) {
-        switch feature {
-        case "统计", "图表统计":
-            openScreen(.statistics)
-        case "资产管理":
-            openScreen(.assets)
-        case "账本管理", "账本切换":
-            openScreen(.books)
-        case "分类管理":
-            openScreen(.categories)
-        case "自动记账", "自动记账中心":
-            openScreen(.autoLedgerCenter)
-        case "小组件", "桌面小组件":
-            openScreen(.widgets)
-        case "设置", "数据备份", "隐私与安全":
-            openScreen(.settings)
-        default:
+    private func handleDrawerDestination(_ destination: DrawerDestination) {
+        switch destination {
+        case .screen(let screen):
+            openScreen(screen)
+        case .placeholder(let feature):
             highlightedFeature = feature
         }
     }
@@ -508,19 +594,26 @@ struct HomeView: View {
         return "本统计周期预算 \(LedgerFormatters.currency(budgetLimit))，剩余 \(LedgerFormatters.currency(remaining))。"
     }
 
+    private func openDrawer() {
+        guard !isDrawerPresented else { return }
+        withAnimation(.interactiveSpring(response: 0.34, dampingFraction: 0.9)) {
+            isDrawerPresented = true
+        }
+    }
+
+    private func closeDrawer() {
+        guard isDrawerPresented else { return }
+        withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.92)) {
+            isDrawerPresented = false
+        }
+    }
+
     private func openScreen(_ screen: ManagementScreen) {
-        let wasDrawerPresented = isDrawerPresented
-
-        if wasDrawerPresented {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
-                isDrawerPresented = false
-            }
+        if isDrawerPresented {
+            closeDrawer()
         }
-
-        let delay = wasDrawerPresented ? 0.18 : 0
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            activeScreen = screen
-        }
+        activeHomeTab = .ledger
+        activeScreen = screen
     }
 
     private func handleWidgetDeepLink(_ url: URL) {
@@ -530,6 +623,7 @@ struct HomeView: View {
 
         switch action {
         case "quick-add":
+            activeHomeTab = .ledger
             store.isQuickAddPresented = true
         case "statistics":
             openScreen(.statistics)
@@ -545,6 +639,22 @@ struct HomeView: View {
             openScreen(.widgets)
         default:
             break
+        }
+    }
+}
+
+private struct CalendarStatItem: View {
+    let value: String
+    let title: String
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+            Text(title)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.ledgerMuted)
         }
     }
 }

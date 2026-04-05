@@ -9,6 +9,8 @@ enum ManagementScreen: String, Identifiable {
     case autoLedgerCenter
     case widgets
     case settings
+    case backup
+    case privacy
 
     var id: String { rawValue }
 }
@@ -53,6 +55,10 @@ struct ManagementSheetView: View {
             WidgetCenterView()
         case .settings:
             SettingsView()
+        case .backup:
+            BackupSettingsView()
+        case .privacy:
+            PrivacySecurityView()
         }
     }
 }
@@ -1348,18 +1354,30 @@ private struct SchemeMetric: View {
     }
 }
 
+private enum SettingsLayout {
+    static let sectionSpacing: CGFloat = 16
+    static let dividerLeading: CGFloat = 18
+    static let rowHorizontalPadding: CGFloat = 18
+    static let rowVerticalPadding: CGFloat = 16
+    static let titleFontSize: CGFloat = 18
+    static let valueFontSize: CGFloat = 16
+    static let subtitleFontSize: CGFloat = 13
+}
+
 struct SettingsView: View {
     @EnvironmentObject private var store: LedgerStore
 
     @State private var isDeleteAlertPresented = false
     @State private var isHelpPresented = false
     @State private var isAboutPresented = false
+    @State private var isBackupPresented = false
+    @State private var isPrivacyPresented = false
 
     private let monthStartDayOptions = Array(1...28)
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
                 displaySettingsCard
                 pushSettingsCard
                 serviceCard
@@ -1384,6 +1402,18 @@ struct SettingsView: View {
         .sheet(isPresented: $isAboutPresented) {
             AboutAppView()
         }
+        .sheet(isPresented: $isBackupPresented) {
+            NavigationStack {
+                BackupSettingsView()
+                    .environmentObject(store)
+            }
+        }
+        .sheet(isPresented: $isPrivacyPresented) {
+            NavigationStack {
+                PrivacySecurityView()
+                    .environmentObject(store)
+            }
+        }
         .alert("确认删除历史账单？", isPresented: $isDeleteAlertPresented) {
             Button("删除", role: .destructive) {
                 store.clearAllHistoryEntries()
@@ -1407,7 +1437,7 @@ struct SettingsView: View {
                 }
             }
 
-            Divider().padding(.leading, 18)
+            Divider().padding(.leading, SettingsLayout.dividerLeading)
 
             SettingSelectRow(
                 title: "助手回复风格",
@@ -1420,29 +1450,7 @@ struct SettingsView: View {
                 }
             }
 
-            Divider().padding(.leading, 18)
-
-            SettingToggleRow(
-                title: "展示记录图片",
-                subtitle: "用于自动记账回看截图",
-                isOn: Binding(
-                    get: { store.appSettings.showRecordImages },
-                    set: { store.appSettings.showRecordImages = $0 }
-                )
-            )
-
-            Divider().padding(.leading, 18)
-
-            SettingToggleRow(
-                title: "地点展示",
-                subtitle: "允许在账单中展示地点字段",
-                isOn: Binding(
-                    get: { store.appSettings.showLocation },
-                    set: { store.appSettings.showLocation = $0 }
-                )
-            )
-
-            Divider().padding(.leading, 18)
+            Divider().padding(.leading, SettingsLayout.dividerLeading)
 
             SettingToggleRow(
                 title: "首页助手卡片",
@@ -1452,23 +1460,12 @@ struct SettingsView: View {
                     set: { store.appSettings.showOfferRecommendations = $0 }
                 )
             )
-
-            Divider().padding(.leading, 18)
-
-            SettingToggleRow(
-                title: "去敏展示",
-                subtitle: "隐藏金额和支付方式",
-                isOn: Binding(
-                    get: { store.appSettings.hideSensitiveInfo },
-                    set: { store.appSettings.hideSensitiveInfo = $0 }
-                )
-            )
         }
         .ledgerCard()
     }
 
     private var pushSettingsCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             SettingToggleRow(
                 title: "推送服务",
                 subtitle: "总开关会联动下方提醒项",
@@ -1477,8 +1474,8 @@ struct SettingsView: View {
                     set: { store.setPushEnabled($0) }
                 )
             )
-            .padding(.horizontal, 18)
-            .padding(.top, 18)
+            .padding(.horizontal, SettingsLayout.rowHorizontalPadding)
+            .padding(.top, 16)
 
             VStack(spacing: 0) {
                 SettingCheckRow(
@@ -1488,7 +1485,7 @@ struct SettingsView: View {
                         set: { store.setPushSubItem(dailyLedger: $0) }
                     )
                 )
-                Divider().padding(.leading, 18)
+                Divider().padding(.leading, SettingsLayout.dividerLeading)
 
                 SettingCheckRow(
                     title: "预算提醒",
@@ -1497,7 +1494,7 @@ struct SettingsView: View {
                         set: { store.setPushSubItem(budgetReminder: $0) }
                     )
                 )
-                Divider().padding(.leading, 18)
+                Divider().padding(.leading, SettingsLayout.dividerLeading)
 
                 SettingCheckRow(
                     title: "功能推荐",
@@ -1506,7 +1503,7 @@ struct SettingsView: View {
                         set: { store.setPushSubItem(featureRecommendation: $0) }
                     )
                 )
-                Divider().padding(.leading, 18)
+                Divider().padding(.leading, SettingsLayout.dividerLeading)
 
                 SettingCheckRow(
                     title: "账单回顾",
@@ -1527,8 +1524,12 @@ struct SettingsView: View {
 
     private var serviceCard: some View {
         VStack(spacing: 0) {
+            SettingActionRow(title: "数据备份") { isBackupPresented = true }
+            Divider().padding(.leading, SettingsLayout.dividerLeading)
+            SettingActionRow(title: "隐私与安全") { isPrivacyPresented = true }
+            Divider().padding(.leading, SettingsLayout.dividerLeading)
             SettingActionRow(title: "帮助与反馈") { isHelpPresented = true }
-            Divider().padding(.leading, 18)
+            Divider().padding(.leading, SettingsLayout.dividerLeading)
             SettingActionRow(title: "关于 App") { isAboutPresented = true }
         }
         .ledgerCard()
@@ -1540,17 +1541,164 @@ struct SettingsView: View {
         } label: {
             HStack {
                 Text("删除所有历史账单数据")
-                    .font(.system(size: 18, weight: .medium, design: .rounded))
+                    .font(.system(size: SettingsLayout.titleFontSize, weight: .medium, design: .rounded))
                 Spacer()
                 Text("删除")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .font(.system(size: SettingsLayout.titleFontSize, weight: .bold, design: .rounded))
             }
             .foregroundStyle(Color.red)
-            .padding(.horizontal, 18)
+            .padding(.horizontal, SettingsLayout.rowHorizontalPadding)
             .padding(.vertical, 20)
         }
         .buttonStyle(.plain)
         .ledgerCard()
+    }
+}
+
+struct BackupSettingsView: View {
+    @EnvironmentObject private var store: LedgerStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var isClearAlertPresented = false
+    @State private var statusMessage: String?
+
+    private var statusBinding: Binding<Bool> {
+        Binding(
+            get: { statusMessage != nil },
+            set: { shouldShow in
+                if !shouldShow {
+                    statusMessage = nil
+                }
+            }
+        )
+    }
+
+    private var backupDescription: String {
+        guard let lastBackupDate = store.lastBackupDate else {
+            return "尚未生成本地备份快照。"
+        }
+        return "最近一次备份：\(lastBackupDate.formatted(date: .abbreviated, time: .shortened))"
+    }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("本地快照")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.ledgerText)
+                    Text(backupDescription)
+                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.ledgerMuted)
+                    Text("快照只保存在当前设备，用于留存关键配置与账本规模信息。")
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.ledgerMuted)
+                }
+                .padding(18)
+                .ledgerCard()
+
+                VStack(spacing: 0) {
+                    SettingActionRow(title: "立即生成备份") {
+                        statusMessage = store.createLocalBackupSnapshot() ? "本地备份已更新。" : "备份失败，请稍后重试。"
+                    }
+                    Divider().padding(.leading, SettingsLayout.dividerLeading)
+                    SettingActionRow(title: "清除本地备份") {
+                        isClearAlertPresented = true
+                    }
+                }
+                .opacity(store.hasLocalBackupSnapshot ? 1 : 0.85)
+                .ledgerCard()
+            }
+            .padding(20)
+            .padding(.bottom, 24)
+        }
+        .background(Color.ledgerCanvas.ignoresSafeArea())
+        .navigationTitle("数据备份")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("完成") { dismiss() }
+            }
+        }
+        .alert("确认清除本地备份？", isPresented: $isClearAlertPresented) {
+            Button("清除", role: .destructive) {
+                store.clearLocalBackupSnapshot()
+                statusMessage = "已清除本地备份。"
+            }
+            Button("取消", role: .cancel) { }
+        } message: {
+            Text("清除后将无法继续查看当前备份快照信息。")
+        }
+        .alert("备份状态", isPresented: statusBinding) {
+            Button("知道了", role: .cancel) { }
+        } message: {
+            Text(statusMessage ?? "")
+        }
+    }
+}
+
+struct PrivacySecurityView: View {
+    @EnvironmentObject private var store: LedgerStore
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("隐私策略")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.ledgerText)
+                    Text("敏感信息默认可控，展示行为只影响界面回显，不影响原始账单数据。")
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.ledgerMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(18)
+                .ledgerCard()
+
+                VStack(spacing: 0) {
+                    SettingToggleRow(
+                        title: "去敏展示",
+                        subtitle: "隐藏金额和支付方式",
+                        isOn: Binding(
+                            get: { store.appSettings.hideSensitiveInfo },
+                            set: { store.appSettings.hideSensitiveInfo = $0 }
+                        )
+                    )
+                    Divider().padding(.leading, SettingsLayout.dividerLeading)
+
+                    SettingToggleRow(
+                        title: "展示记录图片",
+                        subtitle: "用于自动记账回看截图",
+                        isOn: Binding(
+                            get: { store.appSettings.showRecordImages },
+                            set: { store.appSettings.showRecordImages = $0 }
+                        )
+                    )
+                    Divider().padding(.leading, SettingsLayout.dividerLeading)
+
+                    SettingToggleRow(
+                        title: "地点展示",
+                        subtitle: "允许在账单中展示地点字段",
+                        isOn: Binding(
+                            get: { store.appSettings.showLocation },
+                            set: { store.appSettings.showLocation = $0 }
+                        )
+                    )
+                }
+                .ledgerCard()
+            }
+            .padding(20)
+            .padding(.bottom, 24)
+        }
+        .background(Color.ledgerCanvas.ignoresSafeArea())
+        .navigationTitle("隐私与安全")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("完成") { dismiss() }
+            }
+        }
     }
 }
 
@@ -1563,11 +1711,11 @@ private struct SettingToggleRow: View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.system(size: 20, weight: .medium, design: .rounded))
+                    .font(.system(size: SettingsLayout.titleFontSize, weight: .medium, design: .rounded))
                     .foregroundStyle(Color.ledgerText)
                 if let subtitle {
                     Text(subtitle)
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .font(.system(size: SettingsLayout.subtitleFontSize, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.ledgerMuted)
                 }
             }
@@ -1577,8 +1725,8 @@ private struct SettingToggleRow: View {
                 .accessibilityLabel(title)
                 .tint(Color.ledgerAccent)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 16)
+        .padding(.horizontal, SettingsLayout.rowHorizontalPadding)
+        .padding(.vertical, SettingsLayout.rowVerticalPadding)
     }
 }
 
@@ -1596,7 +1744,7 @@ private struct SettingSelectRow<MenuContent: View>: View {
     var body: some View {
         HStack(spacing: 14) {
             Text(title)
-                .font(.system(size: 20, weight: .medium, design: .rounded))
+                .font(.system(size: SettingsLayout.titleFontSize, weight: .medium, design: .rounded))
                 .foregroundStyle(Color.ledgerText)
             Spacer()
             Menu {
@@ -1604,15 +1752,15 @@ private struct SettingSelectRow<MenuContent: View>: View {
             } label: {
                 HStack(spacing: 6) {
                     Text(value)
-                        .font(.system(size: 17, weight: .medium, design: .rounded))
+                        .font(.system(size: SettingsLayout.valueFontSize, weight: .medium, design: .rounded))
                     Image(systemName: "chevron.right")
                         .font(.system(size: 13, weight: .bold))
                 }
                 .foregroundStyle(Color.ledgerMuted)
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 20)
+        .padding(.horizontal, SettingsLayout.rowHorizontalPadding)
+        .padding(.vertical, SettingsLayout.rowVerticalPadding)
     }
 }
 
@@ -1626,15 +1774,15 @@ private struct SettingCheckRow: View {
         } label: {
             HStack {
                 Text(title)
-                    .font(.system(size: 20, weight: .medium, design: .rounded))
+                    .font(.system(size: SettingsLayout.titleFontSize, weight: .medium, design: .rounded))
                     .foregroundStyle(Color.ledgerText)
                 Spacer()
                 Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 32, weight: .semibold))
+                    .font(.system(size: 30, weight: .semibold))
                     .foregroundStyle(isChecked ? Color.ledgerAccent : Color.ledgerMuted.opacity(0.6))
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 18)
+            .padding(.horizontal, SettingsLayout.rowHorizontalPadding)
+            .padding(.vertical, SettingsLayout.rowVerticalPadding)
         }
         .buttonStyle(.plain)
     }
@@ -1648,15 +1796,17 @@ private struct SettingActionRow: View {
         Button(action: action) {
             HStack {
                 Text(title)
-                    .font(.system(size: 20, weight: .medium, design: .rounded))
+                    .font(.system(size: SettingsLayout.titleFontSize, weight: .medium, design: .rounded))
                     .foregroundStyle(Color.ledgerText)
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(Color.ledgerMuted)
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, SettingsLayout.rowHorizontalPadding)
+            .padding(.vertical, SettingsLayout.rowVerticalPadding)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
