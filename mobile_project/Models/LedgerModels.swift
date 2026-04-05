@@ -281,11 +281,17 @@ struct QuickEntryDraft {
     }
 }
 
+enum DrawerDestination: Hashable {
+    case screen(ManagementScreen)
+    case placeholder(String)
+}
+
 struct DrawerShortcut: Identifiable {
     let id: String
     let title: String
     let icon: String
     let accent: Color
+    let destination: DrawerDestination
 }
 
 struct DrawerLinkItem: Identifiable {
@@ -294,6 +300,7 @@ struct DrawerLinkItem: Identifiable {
     let icon: String
     let accent: Color
     let showsBadge: Bool
+    let destination: DrawerDestination
 }
 
 enum AssistantReplyStyle: String, CaseIterable, Identifiable, Codable {
@@ -315,7 +322,7 @@ enum AssistantReplyStyle: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-struct AppSettings: Codable {
+struct AppSettings: Codable, Equatable {
     var monthStartDay: Int = 1
     var assistantReplyStyle: AssistantReplyStyle = .balanced
     var showRecordImages = true
@@ -478,27 +485,27 @@ extension LedgerAccountTemplate {
 
 extension DrawerShortcut {
     static let commonTools: [DrawerShortcut] = [
-        DrawerShortcut(id: "stats", title: "图表统计", icon: "chart.pie", accent: .ledgerAccent),
-        DrawerShortcut(id: "assets", title: "资产管理", icon: "creditcard", accent: .ledgerGold),
-        DrawerShortcut(id: "books", title: "账本管理", icon: "book.closed", accent: .ledgerMint),
-        DrawerShortcut(id: "budget", title: "预算管理", icon: "square.and.pencil", accent: .ledgerLavender),
-        DrawerShortcut(id: "saving", title: "攒钱计划", icon: "dollarsign.circle", accent: .ledgerIncome),
-        DrawerShortcut(id: "widgets", title: "小组件", icon: "square.grid.2x2", accent: .ledgerCoral),
-        DrawerShortcut(id: "categories", title: "分类管理", icon: "square.grid.3x1.folder.fill.badge.plus", accent: .ledgerAccent),
-        DrawerShortcut(id: "tags", title: "标签管理", icon: "bookmark", accent: .ledgerGold)
+        DrawerShortcut(id: "stats", title: "图表统计", icon: "chart.pie", accent: .ledgerAccent, destination: .screen(.statistics)),
+        DrawerShortcut(id: "assets", title: "资产管理", icon: "creditcard", accent: .ledgerGold, destination: .screen(.assets)),
+        DrawerShortcut(id: "books", title: "账本管理", icon: "book.closed", accent: .ledgerMint, destination: .screen(.books)),
+        DrawerShortcut(id: "budget", title: "预算管理", icon: "square.and.pencil", accent: .ledgerLavender, destination: .placeholder("预算管理")),
+        DrawerShortcut(id: "saving", title: "攒钱计划", icon: "dollarsign.circle", accent: .ledgerIncome, destination: .placeholder("攒钱计划")),
+        DrawerShortcut(id: "widgets", title: "小组件", icon: "square.grid.2x2", accent: .ledgerCoral, destination: .screen(.widgets)),
+        DrawerShortcut(id: "categories", title: "分类管理", icon: "square.grid.3x1.folder.fill.badge.plus", accent: .ledgerAccent, destination: .screen(.categories)),
+        DrawerShortcut(id: "tags", title: "标签管理", icon: "bookmark", accent: .ledgerGold, destination: .placeholder("标签管理"))
     ]
 
     static let quickTools: [DrawerShortcut] = [
-        DrawerShortcut(id: "import", title: "导入导出", icon: "square.and.arrow.down", accent: .ledgerAccent),
-        DrawerShortcut(id: "automation", title: "自动记账", icon: "doc.text.magnifyingglass", accent: .ledgerMint),
-        DrawerShortcut(id: "schedule", title: "定时记账", icon: "clock.arrow.circlepath", accent: .ledgerLavender)
+        DrawerShortcut(id: "import", title: "导入导出", icon: "square.and.arrow.down", accent: .ledgerAccent, destination: .placeholder("导入导出")),
+        DrawerShortcut(id: "automation", title: "自动记账", icon: "doc.text.magnifyingglass", accent: .ledgerMint, destination: .screen(.autoLedgerCenter)),
+        DrawerShortcut(id: "schedule", title: "定时记账", icon: "clock.arrow.circlepath", accent: .ledgerLavender, destination: .placeholder("定时记账"))
     ]
 }
 
 extension DrawerLinkItem {
     static let settingsItems: [DrawerLinkItem] = [
-        DrawerLinkItem(id: "settings", title: "设置", icon: "gearshape", accent: .ledgerAccent, showsBadge: false),
-        DrawerLinkItem(id: "backup", title: "数据备份", icon: "externaldrive", accent: .ledgerMint, showsBadge: false),
-        DrawerLinkItem(id: "privacy", title: "隐私与安全", icon: "lock.shield", accent: .ledgerGold, showsBadge: false)
+        DrawerLinkItem(id: "settings", title: "设置", icon: "gearshape", accent: .ledgerAccent, showsBadge: false, destination: .screen(.settings)),
+        DrawerLinkItem(id: "backup", title: "数据备份", icon: "externaldrive", accent: .ledgerMint, showsBadge: false, destination: .screen(.backup)),
+        DrawerLinkItem(id: "privacy", title: "隐私与安全", icon: "lock.shield", accent: .ledgerGold, showsBadge: false, destination: .screen(.privacy))
     ]
 }

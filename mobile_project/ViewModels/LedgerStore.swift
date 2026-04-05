@@ -6,8 +6,11 @@ final class LedgerStore: ObservableObject {
     @Published var isQuickAddPresented = false
     @Published var appSettings: AppSettings {
         didSet {
-            persistAppSettings()
-            syncWidgetSnapshot()
+            guard appSettings != oldValue else { return }
+            schedulePersistAppSettings()
+            if appSettings.monthStartDay != oldValue.monthStartDay {
+                syncWidgetSnapshot()
+            }
         }
     }
     @Published var budgetLimit: Double? {
@@ -27,9 +30,13 @@ final class LedgerStore: ObservableObject {
     }
     @Published private(set) var categorySchemes: [LedgerCategoryScheme]
     @Published var selectedCategorySchemeID: UUID
+    @Published private(set) var lastBackupDate: Date?
 
     private let calendar = Calendar.current
     private let appSettingsKey = "ledger.app.settings"
+    private let localBackupSnapshotKey = "ledger.local.backup.snapshot"
+    private let localBackupDateKey = "ledger.local.backup.date"
+    private var settingsPersistTask: Task<Void, Never>?
     private let bookIcons = [
         "book.closed.fill",
         "star.square.fill",
@@ -47,8 +54,14 @@ final class LedgerStore: ObservableObject {
         self.accounts = seed.accounts
         self.categorySchemes = seed.categorySchemes
         self.selectedCategorySchemeID = seed.selectedCategorySchemeID
+        self.lastBackupDate = nil
         self.appSettings = loadAppSettings()
+        self.lastBackupDate = loadLastBackupDate()
         syncWidgetSnapshot()
+    }
+
+    deinit {
+        settingsPersistTask?.cancel()
     }
 
     var paymentMethods: [String] {
@@ -319,6 +332,40 @@ final class LedgerStore: ObservableObject {
         }
     }
 
+    var hasLocalBackupSnapshot: Bool {
+        UserDefaults.standard.data(forKey: localBackupSnapshotKey) != nil
+    }
+
+    @discardableResult
+    func createLocalBackupSnapshot() -> Bool {
+        let snapshot = LocalBackupSnapshot(
+            generatedAt: Date(),
+            appSettings: appSettings,
+            budgetLimit: budgetLimit,
+            selectedBookName: currentBook.name,
+            totalEntryCount: entries.count,
+            totalBookCount: books.count,
+            totalAccountCount: accounts.count,
+            totalCategorySchemeCount: categorySchemes.count
+        )
+
+        guard let data = try? JSONEncoder().encode(snapshot) else {
+            return false
+        }
+
+        let now = Date()
+        UserDefaults.standard.set(data, forKey: localBackupSnapshotKey)
+        UserDefaults.standard.set(now, forKey: localBackupDateKey)
+        lastBackupDate = now
+        return true
+    }
+
+    func clearLocalBackupSnapshot() {
+        UserDefaults.standard.removeObject(forKey: localBackupSnapshotKey)
+        UserDefaults.standard.removeObject(forKey: localBackupDateKey)
+        lastBackupDate = nil
+    }
+
     func clearAllHistoryEntries() {
         entries.removeAll()
     }
@@ -566,6 +613,7 @@ final class LedgerStore: ObservableObject {
     private func updateSettings(_ transform: (inout AppSettings) -> Void) {
         var settings = appSettings
         transform(&settings)
+        guard settings != appSettings else { return }
         appSettings = settings
     }
 
@@ -577,9 +625,32 @@ final class LedgerStore: ObservableObject {
         return settings
     }
 
-    private func persistAppSettings() {
-        guard let data = try? JSONEncoder().encode(appSettings) else { return }
-        UserDefaults.standard.set(data, forKey: appSettingsKey)
+    private func schedulePersistAppSettings() {
+        settingsPersistTask?.cancel()
+
+        let currentSettings = appSettings
+        let key = appSettingsKey
+        settingsPersistTask = Task.detached(priority: .utility) {
+            try? await Task.sleep(nanoseconds: 220_000_000)
+            guard !Task.isCancelled else { return }
+            guard let data = try? JSONEncoder().encode(currentSettings) else { return }
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
+    private func loadLastBackupDate() -> Date? {
+        UserDefaults.standard.object(forKey: localBackupDateKey) as? Date
+    }
+
+    private struct LocalBackupSnapshot: Codable {
+        let generatedAt: Date
+        let appSettings: AppSettings
+        let budgetLimit: Double?
+        let selectedBookName: String
+        let totalEntryCount: Int
+        let totalBookCount: Int
+        let totalAccountCount: Int
+        let totalCategorySchemeCount: Int
     }
 
     private struct SeedState {

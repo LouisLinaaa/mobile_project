@@ -11,6 +11,11 @@ struct HomeView: View {
         store.isBalanceVisible && !store.appSettings.hideSensitiveInfo
     }
 
+    private var selectedDrawerDestination: DrawerDestination? {
+        guard let activeScreen else { return nil }
+        return .screen(activeScreen)
+    }
+
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
@@ -38,7 +43,8 @@ struct HomeView: View {
                         totalRecordDays: store.totalRecordDays,
                         totalRecords: store.totalRecords,
                         streak: store.currentStreak,
-                        onShortcutTap: presentPlaceholderFeature(_:),
+                        selectedDestination: selectedDrawerDestination,
+                        onShortcutTap: handleDrawerDestination(_:),
                         onClose: {
                             withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
                                 isDrawerPresented = false
@@ -408,7 +414,7 @@ struct HomeView: View {
     private var quickEntryDock: some View {
         HStack(spacing: 12) {
             Button {
-                presentPlaceholderFeature("搜索")
+                handleDrawerDestination(.placeholder("搜索"))
             } label: {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 20, weight: .semibold))
@@ -474,23 +480,11 @@ struct HomeView: View {
         )
     }
 
-    private func presentPlaceholderFeature(_ feature: String) {
-        switch feature {
-        case "统计", "图表统计":
-            openScreen(.statistics)
-        case "资产管理":
-            openScreen(.assets)
-        case "账本管理", "账本切换":
-            openScreen(.books)
-        case "分类管理":
-            openScreen(.categories)
-        case "自动记账", "自动记账中心":
-            openScreen(.autoLedgerCenter)
-        case "小组件", "桌面小组件":
-            openScreen(.widgets)
-        case "设置", "数据备份", "隐私与安全":
-            openScreen(.settings)
-        default:
+    private func handleDrawerDestination(_ destination: DrawerDestination) {
+        switch destination {
+        case .screen(let screen):
+            openScreen(screen)
+        case .placeholder(let feature):
             highlightedFeature = feature
         }
     }
@@ -509,18 +503,12 @@ struct HomeView: View {
     }
 
     private func openScreen(_ screen: ManagementScreen) {
-        let wasDrawerPresented = isDrawerPresented
-
-        if wasDrawerPresented {
+        if isDrawerPresented {
             withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
                 isDrawerPresented = false
             }
         }
-
-        let delay = wasDrawerPresented ? 0.18 : 0
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            activeScreen = screen
-        }
+        activeScreen = screen
     }
 
     private func handleWidgetDeepLink(_ url: URL) {

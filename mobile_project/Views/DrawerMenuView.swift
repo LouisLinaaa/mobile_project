@@ -6,7 +6,8 @@ struct DrawerMenuView: View {
     let totalRecordDays: Int
     let totalRecords: Int
     let streak: Int
-    let onShortcutTap: (String) -> Void
+    let selectedDestination: DrawerDestination?
+    let onShortcutTap: (DrawerDestination) -> Void
     let onClose: () -> Void
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 5)
@@ -16,8 +17,18 @@ struct DrawerMenuView: View {
             VStack(alignment: .leading, spacing: 22) {
                 header
                 monthCard
-                ShortcutSectionCard(title: "常用功能", items: DrawerShortcut.commonTools, onTap: onShortcutTap)
-                ShortcutSectionCard(title: "快捷记账", items: DrawerShortcut.quickTools, onTap: onShortcutTap)
+                ShortcutSectionCard(
+                    title: "常用功能",
+                    items: DrawerShortcut.commonTools,
+                    selectedDestination: selectedDestination,
+                    onTap: onShortcutTap
+                )
+                ShortcutSectionCard(
+                    title: "快捷记账",
+                    items: DrawerShortcut.quickTools,
+                    selectedDestination: selectedDestination,
+                    onTap: onShortcutTap
+                )
                 linkCard
             }
             .padding(20)
@@ -120,15 +131,20 @@ struct DrawerMenuView: View {
     private var linkCard: some View {
         VStack(spacing: 0) {
             ForEach(Array(DrawerLinkItem.settingsItems.enumerated()), id: \.element.id) { index, item in
+                let isSelected = selectedDestination == item.destination
                 Button {
-                    onShortcutTap(item.title)
+                    onShortcutTap(item.destination)
                 } label: {
                     HStack(spacing: 14) {
                         ZStack(alignment: .topTrailing) {
                             Image(systemName: item.icon)
                                 .font(.system(size: 20, weight: .semibold))
-                                .foregroundStyle(item.accent)
-                                .frame(width: 34)
+                                .foregroundStyle(isSelected ? .white : item.accent)
+                                .frame(width: 36, height: 36)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                        .fill(isSelected ? item.accent : item.accent.opacity(0.14))
+                                )
 
                             if item.showsBadge {
                                 Circle()
@@ -141,6 +157,8 @@ struct DrawerMenuView: View {
                         Text(item.title)
                             .font(.system(size: 18, weight: .medium, design: .rounded))
                             .foregroundStyle(Color.ledgerText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.92)
 
                         Spacer()
 
@@ -150,6 +168,10 @@ struct DrawerMenuView: View {
                     }
                     .padding(.vertical, 20)
                     .padding(.horizontal, 18)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(isSelected ? item.accent.opacity(0.12) : .clear)
+                    )
                 }
                 .buttonStyle(.plain)
 
@@ -187,9 +209,12 @@ private struct DrawerStatView: View {
 private struct ShortcutSectionCard: View {
     let title: String
     let items: [DrawerShortcut]
-    let onTap: (String) -> Void
+    let selectedDestination: DrawerDestination?
+    let onTap: (DrawerDestination) -> Void
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 14), count: 3)
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: 84, maximum: 120), spacing: 14)]
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -199,14 +224,19 @@ private struct ShortcutSectionCard: View {
 
             LazyVGrid(columns: columns, spacing: 18) {
                 ForEach(items) { item in
+                    let isSelected = selectedDestination == item.destination
                     Button {
-                        onTap(item.title)
+                        onTap(item.destination)
                     } label: {
                         VStack(spacing: 12) {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                    .fill(item.accent.opacity(0.14))
+                                    .fill(isSelected ? item.accent.opacity(0.24) : item.accent.opacity(0.14))
                                     .frame(width: 64, height: 64)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                            .stroke(isSelected ? item.accent : .clear, lineWidth: 1.5)
+                                    )
 
                                 Image(systemName: item.icon)
                                     .font(.system(size: 28, weight: .medium))
@@ -217,8 +247,11 @@ private struct ShortcutSectionCard: View {
                                 .font(.system(size: 15, weight: .medium, design: .rounded))
                                 .foregroundStyle(Color.ledgerText)
                                 .multilineTextAlignment(.center)
+                                .lineLimit(2)
+                                .frame(minHeight: 36)
                         }
                         .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
                     }
                     .buttonStyle(.plain)
                 }
