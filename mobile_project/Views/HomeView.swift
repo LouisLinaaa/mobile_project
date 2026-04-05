@@ -525,11 +525,11 @@ struct HomeView: View {
                         .font(.system(size: 20, weight: .medium))
                         .foregroundStyle(Color.ledgerText)
 
-                    Text(activeHomeTab == .ledger ? "记一笔" : "新建日程")
+                    Text("记一笔")
                         .font(.system(size: 17, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.ledgerText)
 
-                    Text(activeHomeTab == .ledger ? "金额、分类、备注" : "添加今天计划")
+                    Text("金额、分类、备注")
                         .font(.system(size: 13, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.ledgerMuted)
                         .lineLimit(1)

@@ -9,22 +9,25 @@ struct DrawerMenuView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            VStack(alignment: .leading, spacing: 12) {
-                header
-                ShortcutSectionCard(
-                    title: "常用功能",
-                    items: DrawerShortcut.commonTools,
-                    selectedDestination: selectedDestination,
-                    onTap: onShortcutTap
-                )
-                ShortcutSectionCard(
-                    title: "快捷记账",
-                    items: DrawerShortcut.quickTools,
-                    selectedDestination: selectedDestination,
-                    onTap: onShortcutTap
-                )
-                linkCard
-                Spacer(minLength: 0)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 12) {
+                    header
+                    ShortcutSectionCard(
+                        title: "常用功能",
+                        items: DrawerShortcut.commonTools,
+                        selectedDestination: selectedDestination,
+                        onTap: onShortcutTap
+                    )
+                    ShortcutSectionCard(
+                        title: "快捷记账",
+                        items: DrawerShortcut.quickTools,
+                        selectedDestination: selectedDestination,
+                        onTap: onShortcutTap
+                    )
+                    linkCard
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .padding(.top, max(6, min(20, topSafeInset * 0.35)))
             .padding(.horizontal, 12)

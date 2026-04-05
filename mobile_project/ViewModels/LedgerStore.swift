@@ -638,6 +638,13 @@ final class LedgerStore: ObservableObject {
         }
     }
 
+    func flushPendingSettingsPersistence() {
+        settingsPersistTask?.cancel()
+        settingsPersistTask = nil
+        guard let data = try? JSONEncoder().encode(appSettings) else { return }
+        UserDefaults.standard.set(data, forKey: appSettingsKey)
+    }
+
     private func loadLastBackupDate() -> Date? {
         UserDefaults.standard.object(forKey: localBackupDateKey) as? Date
     }
