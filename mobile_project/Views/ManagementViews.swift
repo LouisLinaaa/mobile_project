@@ -1559,7 +1559,7 @@ struct BackupSettingsView: View {
     @EnvironmentObject private var store: LedgerStore
     @Environment(\.dismiss) private var dismiss
 
-    @State private var isClearAlertPresented = false
+    @State private var isRestoreAlertPresented = false
     @State private var statusMessage: String?
 
     private var statusBinding: Binding<Bool> {
@@ -1573,46 +1573,53 @@ struct BackupSettingsView: View {
         )
     }
 
-    private var backupDescription: String {
-        guard let lastBackupDate = store.lastBackupDate else {
-            return "尚未生成本地备份快照。"
+    private var summary: LedgerStore.CloudBackupSummary? {
+        store.iCloudBackupSummary
+    }
+
+    private var statusTitle: String {
+        if !store.isICloudBackupAvailable {
+            return "未检测到 iCloud 账户"
         }
-        return "最近一次备份：\(lastBackupDate.formatted(date: .abbreviated, time: .shortened))"
+        if summary != nil {
+            return "iCloud 备份已就绪"
+        }
+        return "还没有云端备份"
+    }
+
+    private var statusSubtitle: String {
+        if !store.isICloudBackupAvailable {
+            return "请先在系统设置中登录 iCloud，随后就可以把账本安全备份到当前 Apple ID。"
+        }
+        guard let summary else {
+            return "当前设备已支持云端备份，建议先执行一次手动备份，后续再继续扩展自动策略。"
+        }
+        return "最近备份时间：\(summary.generatedAt.formatted(date: .abbreviated, time: .shortened))"
     }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("本地快照")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.ledgerText)
-                    Text(backupDescription)
-                        .font(.system(size: 15, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.ledgerMuted)
-                    Text("快照只保存在当前设备，用于留存关键配置与账本规模信息。")
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.ledgerMuted)
+                backupIntroCard
+                iCloudActionCard
+                if let summary {
+                    iCloudDetailCard(summary)
+                } else {
+                    backupEmptyCard
                 }
-                .padding(18)
-                .ledgerCard()
-
-                VStack(spacing: 0) {
-                    SettingActionRow(title: "立即生成备份") {
-                        statusMessage = store.createLocalBackupSnapshot() ? "本地备份已更新。" : "备份失败，请稍后重试。"
-                    }
-                    Divider().padding(.leading, SettingsLayout.dividerLeading)
-                    SettingActionRow(title: "清除本地备份") {
-                        isClearAlertPresented = true
-                    }
-                }
-                .opacity(store.hasLocalBackupSnapshot ? 1 : 0.85)
-                .ledgerCard()
+                backupSafetyCard
             }
             .padding(20)
             .padding(.bottom, 24)
         }
-        .background(Color.ledgerCanvas.ignoresSafeArea())
+        .background(
+            LinearGradient(
+                colors: [Color.ledgerMint.opacity(0.18), Color.ledgerCanvas],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+        )
         .navigationTitle("数据备份")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -1620,20 +1627,154 @@ struct BackupSettingsView: View {
                 Button("完成") { dismiss() }
             }
         }
-        .alert("确认清除本地备份？", isPresented: $isClearAlertPresented) {
-            Button("清除", role: .destructive) {
-                store.clearLocalBackupSnapshot()
-                statusMessage = "已清除本地备份。"
+        .onAppear {
+            store.refreshICloudBackupSummary()
+        }
+        .alert("确认从 iCloud 恢复？", isPresented: $isRestoreAlertPresented) {
+            Button("恢复", role: .destructive) {
+                statusMessage = store.restoreFromICloudBackupSnapshot() ? "云端备份已恢复到当前设备。" : "恢复失败，请确认 iCloud 中已有可用备份。"
             }
             Button("取消", role: .cancel) { }
         } message: {
-            Text("清除后将无法继续查看当前备份快照信息。")
+            Text("恢复会覆盖当前设备上的账本、账户、分类和设置内容。")
         }
         .alert("备份状态", isPresented: statusBinding) {
             Button("知道了", role: .cancel) { }
         } message: {
             Text(statusMessage ?? "")
         }
+    }
+
+    private var backupIntroCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "icloud")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(Color.ledgerAccent)
+                Text("云端备份与恢复")
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.ledgerText)
+            }
+
+            Text("将账本、账户、分类方案和偏好设置备份到当前 Apple ID 对应的 iCloud 空间，在新设备上也能快速接回。")
+                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.ledgerMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(18)
+        .ledgerCard()
+    }
+
+    private var iCloudActionCard: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill((store.isICloudBackupAvailable ? Color.ledgerMint : Color.ledgerCoral).opacity(0.18))
+                        .frame(width: 52, height: 52)
+                    Image(systemName: store.isICloudBackupAvailable ? "checkmark.icloud.fill" : "exclamationmark.icloud.fill")
+                        .font(.system(size: 23, weight: .semibold))
+                        .foregroundStyle(store.isICloudBackupAvailable ? Color.ledgerMint : Color.ledgerCoral)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(statusTitle)
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.ledgerText)
+                    Text(statusSubtitle)
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.ledgerMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            HStack(spacing: 12) {
+                BackupActionButton(
+                    title: "立即备份",
+                    systemImage: "arrow.up.circle.fill",
+                    tint: .ledgerAccent
+                ) {
+                    statusMessage = store.createICloudBackupSnapshot() ? "已将当前数据写入 iCloud 备份。" : "备份失败，请稍后重试。"
+                }
+                .disabled(!store.isICloudBackupAvailable)
+
+                BackupActionButton(
+                    title: "从云端恢复",
+                    systemImage: "arrow.down.circle.fill",
+                    tint: .ledgerMint
+                ) {
+                    isRestoreAlertPresented = true
+                }
+                .disabled(summary == nil)
+            }
+        }
+        .padding(18)
+        .ledgerCard()
+    }
+
+    private func iCloudDetailCard(_ summary: LedgerStore.CloudBackupSummary) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("最近一次云端备份")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.ledgerText)
+                Spacer()
+                Button {
+                    store.refreshICloudBackupSummary()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(Color.ledgerMuted)
+                }
+                .buttonStyle(.plain)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(summary.generatedAt.formatted(date: .complete, time: .shortened))
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.ledgerText)
+                Text("本次备份包含 \(summary.totalEntryCount) 条账单、\(summary.totalBookCount) 个账本、\(summary.totalAccountCount) 个账户。")
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.ledgerMuted)
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                BackupMetricTile(title: "分类方案", value: "\(summary.totalCategorySchemeCount) 套")
+                BackupMetricTile(title: "文件大小", value: summary.fileSizeDescription)
+                BackupMetricTile(title: "应用版本", value: summary.appVersion)
+                BackupMetricTile(title: "备份格式", value: summary.backupVersion)
+            }
+        }
+        .padding(18)
+        .ledgerCard()
+    }
+
+    private var backupEmptyCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("还没有发现云端备份")
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+            Text("先执行一次“立即备份”，后续这里会展示最近一次备份时间、数据规模和恢复入口。")
+                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.ledgerMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(18)
+        .ledgerCard()
+    }
+
+    private var backupSafetyCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("恢复提醒", systemImage: "exclamationmark.triangle")
+                .font(.system(size: 17, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ledgerCoral)
+            Text("恢复操作会覆盖当前设备上的现有内容。若你刚录入了新数据，建议先执行一次手动备份，再继续恢复。")
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.ledgerMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(18)
+        .ledgerCard()
     }
 }
 
@@ -1812,6 +1953,55 @@ private struct SettingActionRow: View {
     }
 }
 
+private struct BackupActionButton: View {
+    let title: String
+    let systemImage: String
+    let tint: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 16, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(tint)
+            )
+        }
+        .buttonStyle(.plain)
+        .opacity(1)
+    }
+}
+
+private struct BackupMetricTile: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.ledgerMuted)
+            Text(value)
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
+        .padding(16)
+        .background(Color.ledgerAccentMuted.opacity(0.32))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
 private struct HelpFeedbackView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -1821,7 +2011,7 @@ private struct HelpFeedbackView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     infoCard(
                         title: "常见问题",
-                        message: "1. 数据默认只保存在本机。\n2. 删除账单后无法恢复。\n3. 月统计起始日会影响预算与图表。"
+                        message: "1. 你可以在设置中手动执行 iCloud 备份与恢复。\n2. 恢复云端备份会覆盖当前设备的数据。\n3. 月统计起始日会影响预算与图表。"
                     )
                     infoCard(
                         title: "反馈方式",
