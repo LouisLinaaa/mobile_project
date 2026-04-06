@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum LedgerKind: String, CaseIterable, Identifiable {
+enum LedgerKind: String, CaseIterable, Identifiable, Codable {
     case expense = "支出"
     case income = "收入"
 
@@ -17,7 +17,7 @@ enum LedgerKind: String, CaseIterable, Identifiable {
     }
 }
 
-enum LedgerTintStyle: String, CaseIterable, Identifiable {
+enum LedgerTintStyle: String, CaseIterable, Identifiable, Codable {
     case accent
     case gold
     case mint
@@ -67,7 +67,7 @@ enum LedgerTintStyle: String, CaseIterable, Identifiable {
     }
 }
 
-struct LedgerCategory: Identifiable, Hashable {
+struct LedgerCategory: Identifiable, Hashable, Codable {
     let id: String
     let name: String
     let icon: String
@@ -85,7 +85,7 @@ struct LedgerCategory: Identifiable, Hashable {
     }
 }
 
-struct LedgerBook: Identifiable, Hashable {
+struct LedgerBook: Identifiable, Hashable, Codable {
     let id: UUID
     let name: String
     let note: String
@@ -110,7 +110,7 @@ struct LedgerBook: Identifiable, Hashable {
     }
 }
 
-enum LedgerAccountGroup: String, CaseIterable, Identifiable {
+enum LedgerAccountGroup: String, CaseIterable, Identifiable, Codable {
     case asset
     case credit
     case recharge
@@ -182,7 +182,7 @@ struct LedgerAccountTemplate: Identifiable, Hashable {
     let group: LedgerAccountGroup
 }
 
-struct LedgerAccount: Identifiable, Hashable {
+struct LedgerAccount: Identifiable, Hashable, Codable {
     let id: UUID
     let templateID: String
     let name: String
@@ -212,7 +212,7 @@ struct LedgerAccount: Identifiable, Hashable {
     var tint: Color { tintStyle.color }
 }
 
-struct LedgerCategoryScheme: Identifiable, Hashable {
+struct LedgerCategoryScheme: Identifiable, Hashable, Codable {
     let id: UUID
     let name: String
     let note: String
@@ -234,7 +234,7 @@ struct LedgerCategoryScheme: Identifiable, Hashable {
     }
 }
 
-struct LedgerEntry: Identifiable {
+struct LedgerEntry: Identifiable, Codable {
     let id: UUID
     let bookID: UUID
     let title: String

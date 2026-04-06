@@ -5,6 +5,13 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
 STAGED_SWIFT_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.swift$' || true)
+TMP_DIR="$(mktemp -d /tmp/mobile_project_pre_commit.XXXXXX)"
+
+cleanup() {
+  rm -rf "$TMP_DIR"
+}
+
+trap cleanup EXIT
 
 if [ -z "$STAGED_SWIFT_FILES" ]; then
   echo "[pre-commit] 没有暂存的 Swift 文件，跳过格式检查。"
@@ -16,23 +23,30 @@ echo "[pre-commit] 开始检查 Swift 格式..."
 has_error=0
 
 while IFS= read -r file; do
-  if [ -f "$file" ]; then
-    if grep -n $'\t' "$file" >/tmp/pre_commit_tab_check.log; then
-      echo "[pre-commit] 检测到 Tab 缩进，请改为空格: $file"
-      cat /tmp/pre_commit_tab_check.log
-      has_error=1
-    fi
+  [ -n "$file" ] || continue
 
-    if grep -nE ' +$' "$file" >/tmp/pre_commit_ws_check.log; then
-      echo "[pre-commit] 检测到行尾空格，请清理: $file"
-      cat /tmp/pre_commit_ws_check.log
-      has_error=1
-    fi
+  safe_name="$(printf '%s' "$file" | tr '/ ' '__')"
+  staged_copy="$TMP_DIR/$safe_name"
+  git show ":$file" >"$staged_copy"
 
-    if command -v swiftformat >/dev/null 2>&1; then
-      if ! swiftformat --lint "$file"; then
-        has_error=1
-      fi
+  tab_log="$TMP_DIR/$safe_name.tab.log"
+  ws_log="$TMP_DIR/$safe_name.ws.log"
+
+  if grep -n $'\t' "$staged_copy" >"$tab_log"; then
+    echo "[pre-commit] 检测到 Tab 缩进，请改为空格: $file"
+    cat "$tab_log"
+    has_error=1
+  fi
+
+  if grep -nE ' +$' "$staged_copy" >"$ws_log"; then
+    echo "[pre-commit] 检测到行尾空格，请清理: $file"
+    cat "$ws_log"
+    has_error=1
+  fi
+
+  if command -v swiftformat >/dev/null 2>&1; then
+    if ! swiftformat --lint "$staged_copy"; then
+      has_error=1
     fi
   fi
 done <<< "$STAGED_SWIFT_FILES"

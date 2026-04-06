@@ -4,7 +4,7 @@
 
 > Course: `COMP7506B Smart Phone Apps Development`  
 > Project theme: `Developing a smart phone application from scratch`  
-> Product: `Privacy-first local bookkeeping app (iOS)`
+> Product: `Privacy-first local bookkeeping app for iPhone`
 
 ## Team
 
@@ -14,143 +14,214 @@
 - Li Ye
 - Lin Ruiyi
 
-## Project Summary
+## Overview
 
-This project builds a lightweight but practical iOS bookkeeping app focused on **privacy**, **local-first data**, and **clean daily-use workflows**.
+This repository contains an iOS bookkeeping prototype built with `SwiftUI`.
 
-Current prototype already supports:
+The product direction is:
 
-- Quick expense/income entry
-- Monthly summary cards
-- Book management
-- Asset account management
-- Category scheme management
-- Statistics dashboard (trend + ranking + category composition)
+- privacy-first and local-first
+- fast daily bookkeeping with low interaction cost
+- modular management screens for books, assets, categories, settings, widgets, and automation
+- a backup foundation that can later be upgraded to real cloud sync
 
-## Course Requirements Mapping (from Project Brief)
+The current prototype already includes:
 
-### Key dates
+- quick expense and income entry
+- home dashboard with monthly overview
+- statistics dashboard with charts and rankings
+- asset account management
+- book management
+- category scheme management
+- widget center and widget target
+- settings, privacy, and backup entry
+- local persisted app state
 
-- Group formation deadline: **22 February 2026 (Sunday)**
-- In-class app demo: **30 April 2026 (Thursday)**
-- Final submission: **3 May 2026 (Sunday), 11:59 PM (HKT)**
+## Current Product Status
 
-### Deliverables checklist
-
-- [ ] Project document (>= 2 pages): background research, app summary, member contribution
-- [x] Source code with build/run instructions
-- [ ] Introductory video (1-2 minutes)
-
-## Progress Board
-
-| Area | Status | Progress |
+| Area | Status | Notes |
 |---|---|---|
-| Core app architecture (SwiftUI + state store) | Done | 100% |
-| Quick bookkeeping flow | Done | 90% |
-| Chart/statistics module | Done | 85% |
-| Asset management module | Done | 85% |
-| Book management module | Done | 85% |
-| Category management module | Done | 85% |
-| Local persistence (SwiftData/CoreData) | In progress | 30% |
-| Automation features | Planned | 20% |
-| AI features | Planned | 20% |
-| Final doc + demo video | Planned | 15% |
+| Core app architecture | Done | SwiftUI + centralized state store |
+| Quick bookkeeping flow | Done | Expense and income entry available |
+| Statistics dashboard | Done | Trend, ranking, and category composition |
+| Book / asset / category management | Done | Core CRUD-style flows available |
+| Widget support | Done | Shared widget target and debug scheme included |
+| Local persistence foundation | Done | State is persisted locally |
+| Backup and restore entry | In progress | UI and data snapshot flow are in place |
+| iCloud backup capability | Blocked by signing | Personal Team cannot enable iCloud entitlement |
+| Automation and AI features | Planned | Product direction retained for later iteration |
 
-## Background Research (initial)
+## What Makes This Project Different
 
-At least 3 related products were reviewed:
+### Privacy by default
 
-1. **Money Manager**
-2. **Spendee**
-3. **Wallet by BudgetBakers**
+- User data is designed to stay local by default.
+- Sensitive display options can be controlled in settings.
+- External services are not required for the core bookkeeping flow.
 
-### Common strengths
+### Daily usability first
 
-- Mature charts and budgeting
-- Multi-account support
-- Recurring transaction handling
+- The prototype focuses on quick entry, clear summaries, and lightweight management flows.
+- Widgets and management panels are organized around common daily finance tasks instead of heavy enterprise-style workflows.
 
-### Common pain points / gaps
+### Backup-aware design
 
-- Privacy concerns with cloud sync and third-party analytics
-- Heavy UI and ad/premium pressure
-- Weak local AI assistance for natural-language entry
+- The app now includes a backup and restore entry in settings.
+- Full iCloud capability is not enabled in the current signing environment, but the backup UI and snapshot model are already prepared for future activation.
 
-### Our differentiation
+## Background Research
 
-- **Local-first privacy model** (data can stay on device)
-- **Automation-first daily flow** (scheduled or rule-based bookkeeping tasks)
-- **AI-assisted interaction** designed for personal finance scenarios
+At least three related products were reviewed during early exploration:
 
-## Innovation Highlights
+1. Money Manager
+2. Spendee
+3. Wallet by BudgetBakers
 
-### 1) AI-assisted features (planned)
+Common strengths:
 
-- Natural language bookkeeping  
-  Example: `"Lunch 48 HKD via Alipay"` -> auto parse amount/category/payment method
-- Smart category suggestion from recent behavior
-- Monthly insight summary with plain-language suggestions
+- mature charts and budgeting patterns
+- multi-account support
+- recurring transaction support
 
-### 2) Automation features (planned)
+Common gaps we want to avoid:
 
-- Scheduled recurring transactions (rent, salary, subscription)
-- Rule engine for auto-tagging/categorization
-- Period-end auto reports (weekly/monthly) with trend snapshots
-
-### 3) Privacy-by-design
-
-- On-device storage by default
-- Optional app lock / Face ID gate
-- Minimized external dependency and telemetry
+- privacy concerns caused by mandatory cloud sync
+- heavy UI and subscription pressure
+- weak local intelligence for personal bookkeeping workflows
 
 ## Tech Stack
 
-- `SwiftUI` (iOS UI)
-- `Charts` (statistics visualization)
-- `Xcode` / `xcodebuild`
-- Planned: `SwiftData` for local persistence
+- `SwiftUI` for app UI
+- `Charts` for statistics visualization
+- `WidgetKit` for widgets
+- `xcodebuild` for command-line build validation
+- local persistence via the app state store and on-device storage
 
-## Build & Run
+## Repository Structure
 
-From project root:
-
-```bash
-xcodebuild -project mobile_project.xcodeproj \
-  -scheme mobile_project \
-  -configuration Debug \
-  -destination 'generic/platform=iOS' \
-  -derivedDataPath ./DerivedData \
-  CODE_SIGNING_ALLOWED=NO build
+```text
+mobile_project/              Main iOS app target
+mobile_project_widgets/      Widget extension target
+scripts/hooks/               Hook implementation scripts
+.githooks/                   Git hook entrypoints
+HOOKS.md                     Hook-specific notes
+README.md                    English README
+README_ZH.md                 Chinese README
 ```
 
-Open in Xcode:
+## Build and Run
+
+### Open in Xcode
 
 ```bash
 open mobile_project.xcodeproj
 ```
 
+### Build from command line
+
+From the project root:
+
+```bash
+xcodebuild -project mobile_project.xcodeproj \
+  -scheme mobile_project \
+  -configuration Debug \
+  -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath ./DerivedData \
+  build
+```
+
 ### Widget debugging in Xcode
 
-- Use scheme `mobile_project` for normal app run/debug.
-- A shared scheme `mobile_project_widgets` is included and pre-configured with:
-  - `_XCWidgetKind=com.github.louislinaa.ledgerlab.widget.today-expense`
-- To debug another widget kind, edit:
-  - `Product -> Scheme -> Edit Scheme -> Run -> Arguments -> Environment Variables`
-  - Change `_XCWidgetKind` to one of:
-    - `com.github.louislinaa.ledgerlab.widget.today-expense`
-    - `com.github.louislinaa.ledgerlab.widget.budget-progress`
-    - `com.github.louislinaa.ledgerlab.widget.quick-action`
-    - `com.github.louislinaa.ledgerlab.widget.account-overview`
-    - `com.github.louislinaa.ledgerlab.widget.auto-ledger-status`
+- Use scheme `mobile_project` for the main app.
+- A shared scheme `mobile_project_widgets` is included for widget debugging.
+- To switch widget type:
+  - open `Product -> Scheme -> Edit Scheme -> Run -> Arguments -> Environment Variables`
+  - update `_XCWidgetKind`
 
-## Upcoming Milestones
+Supported widget kinds currently include:
 
-- [ ] Add persistent local storage (SwiftData)
-- [ ] Add recurring/automation transaction engine
-- [ ] Add AI parsing + AI assistant panel
-- [ ] Finish project report (research + architecture + contribution table)
-- [ ] Record and submit 1-2 minute feature demo video
+- `com.github.louislinaa.ledgerlab.widget.today-expense`
+- `com.github.louislinaa.ledgerlab.widget.budget-progress`
+- `com.github.louislinaa.ledgerlab.widget.quick-action`
+- `com.github.louislinaa.ledgerlab.widget.account-overview`
+- `com.github.louislinaa.ledgerlab.widget.auto-ledger-status`
+
+## Signing and iCloud Note
+
+The current repository can build and run under a Personal Team for local development.
+
+However:
+
+- Personal Team provisioning does **not** support the iCloud capability.
+- Because of that, the backup screen currently acts as a prepared entry and local snapshot flow, not as a fully enabled iCloud sync feature.
+- If the project is moved to a paid Apple Developer team later, the iCloud entitlement and capability can be re-enabled for real cloud backup.
+
+## Git Hooks
+
+This repository includes built-in Git hooks for safer daily collaboration.
+
+### Install hooks
+
+```bash
+./scripts/install-git-hooks.sh
+```
+
+This sets:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+### What the hooks do
+
+`pre-commit`
+
+- checks only the **staged** `.swift` content
+- blocks tab indentation and trailing whitespace
+- optionally runs `swiftformat --lint` when `swiftformat` is installed
+
+`pre-push`
+
+- runs an iOS build check only when pushed commits touch app or Xcode project files
+- skips the build for docs-only or non-iOS changes
+- prints recent build log output directly when the build fails
+
+### Optional tool
+
+```bash
+brew install swiftformat
+```
+
+### Manual verification
+
+```bash
+bash .githooks/pre-commit
+bash .githooks/pre-push
+```
+
+### Temporary skip for pre-push build
+
+```bash
+SKIP_XCODE_BUILD_HOOK=1 git push
+```
+
+Use this only when you already understand the risk and intentionally want to bypass the local build gate.
+
+## Course Deliverables Checklist
+
+- [ ] Project document (>= 2 pages): background research, app summary, member contribution
+- [x] Source code with build and run instructions
+- [ ] Introductory video (1-2 minutes)
+
+## Upcoming Work
+
+- [ ] polish backup and restore UX under the current signing limitation
+- [ ] enable real iCloud backup after moving to a supported Apple Developer team
+- [ ] add recurring transaction / automation engine
+- [ ] add AI parsing and assistant-related flows
+- [ ] finish project report and contribution breakdown
+- [ ] record and submit the demo video
 
 ---
 
-If you are a course assessor/reviewer, this README is maintained as a live status page for Group 09.
+This README is maintained as the main project landing page for the current prototype state.

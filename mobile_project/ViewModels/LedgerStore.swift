@@ -8,41 +8,77 @@ final class LedgerStore: ObservableObject {
         didSet {
             guard appSettings != oldValue else { return }
             schedulePersistAppSettings()
+            schedulePersistLedgerState()
             if appSettings.monthStartDay != oldValue.monthStartDay {
                 syncWidgetSnapshot()
             }
         }
     }
     @Published var budgetLimit: Double? {
-        didSet { syncWidgetSnapshot() }
+        didSet {
+            schedulePersistLedgerState()
+            syncWidgetSnapshot()
+        }
     }
     @Published private(set) var entries: [LedgerEntry] {
-        didSet { syncWidgetSnapshot() }
+        didSet {
+            schedulePersistLedgerState()
+            syncWidgetSnapshot()
+        }
     }
     @Published private(set) var books: [LedgerBook] {
-        didSet { syncWidgetSnapshot() }
+        didSet {
+            schedulePersistLedgerState()
+            syncWidgetSnapshot()
+        }
     }
     @Published var selectedBookID: UUID {
-        didSet { syncWidgetSnapshot() }
+        didSet {
+            schedulePersistLedgerState()
+            syncWidgetSnapshot()
+        }
     }
     @Published private(set) var accounts: [LedgerAccount] {
-        didSet { syncWidgetSnapshot() }
+        didSet {
+            schedulePersistLedgerState()
+            syncWidgetSnapshot()
+        }
     }
-    @Published private(set) var categorySchemes: [LedgerCategoryScheme]
-    @Published var selectedCategorySchemeID: UUID
+    @Published private(set) var categorySchemes: [LedgerCategoryScheme] {
+        didSet { schedulePersistLedgerState() }
+    }
+    @Published var selectedCategorySchemeID: UUID {
+        didSet { schedulePersistLedgerState() }
+    }
     @Published private(set) var lastBackupDate: Date?
+    @Published private(set) var iCloudBackupSummary: CloudBackupSummary?
 
     private let calendar = Calendar.current
     private let appSettingsKey = "ledger.app.settings"
+    private let persistedStateKey = "ledger.app.persisted.state"
     private let localBackupSnapshotKey = "ledger.local.backup.snapshot"
     private let localBackupDateKey = "ledger.local.backup.date"
+    private let iCloudBackupSnapshotKey = "ledger.icloud.backup.snapshot"
     private var settingsPersistTask: Task<Void, Never>?
+    private var statePersistTask: Task<Void, Never>?
+    private var iCloudObserver: NSObjectProtocol?
     private let bookIcons = [
         "book.closed.fill",
         "star.square.fill",
         "tray.full.fill",
         "list.bullet.clipboard.fill"
     ]
+
+    struct CloudBackupSummary: Equatable {
+        let generatedAt: Date
+        let totalEntryCount: Int
+        let totalBookCount: Int
+        let totalAccountCount: Int
+        let totalCategorySchemeCount: Int
+        let appVersion: String
+        let backupVersion: String
+        let fileSizeDescription: String
+    }
 
     init() {
         let seed = LedgerStore.makeSeedData()
@@ -55,13 +91,21 @@ final class LedgerStore: ObservableObject {
         self.categorySchemes = seed.categorySchemes
         self.selectedCategorySchemeID = seed.selectedCategorySchemeID
         self.lastBackupDate = nil
+        self.iCloudBackupSummary = nil
         self.appSettings = loadAppSettings()
         self.lastBackupDate = loadLastBackupDate()
+        restorePersistedStateIfAvailable()
+        configureICloudSync()
+        refreshICloudBackupSummary()
         syncWidgetSnapshot()
     }
 
     deinit {
         settingsPersistTask?.cancel()
+        statePersistTask?.cancel()
+        if let iCloudObserver {
+            NotificationCenter.default.removeObserver(iCloudObserver)
+        }
     }
 
     var paymentMethods: [String] {
@@ -332,24 +376,17 @@ final class LedgerStore: ObservableObject {
         }
     }
 
+    var isICloudBackupAvailable: Bool {
+        false
+    }
+
     var hasLocalBackupSnapshot: Bool {
         UserDefaults.standard.data(forKey: localBackupSnapshotKey) != nil
     }
 
     @discardableResult
     func createLocalBackupSnapshot() -> Bool {
-        let snapshot = LocalBackupSnapshot(
-            generatedAt: Date(),
-            appSettings: appSettings,
-            budgetLimit: budgetLimit,
-            selectedBookName: currentBook.name,
-            totalEntryCount: entries.count,
-            totalBookCount: books.count,
-            totalAccountCount: accounts.count,
-            totalCategorySchemeCount: categorySchemes.count
-        )
-
-        guard let data = try? JSONEncoder().encode(snapshot) else {
+        guard let data = encodedBackupSnapshot() else {
             return false
         }
 
@@ -357,6 +394,40 @@ final class LedgerStore: ObservableObject {
         UserDefaults.standard.set(data, forKey: localBackupSnapshotKey)
         UserDefaults.standard.set(now, forKey: localBackupDateKey)
         lastBackupDate = now
+        return true
+    }
+
+    @discardableResult
+    func createICloudBackupSnapshot() -> Bool {
+        guard let data = encodedBackupSnapshot() else {
+            return false
+        }
+
+        let cloudStore = NSUbiquitousKeyValueStore.default
+        cloudStore.set(data, forKey: iCloudBackupSnapshotKey)
+        _ = cloudStore.synchronize()
+
+        UserDefaults.standard.set(data, forKey: localBackupSnapshotKey)
+        let now = Date()
+        UserDefaults.standard.set(now, forKey: localBackupDateKey)
+        lastBackupDate = now
+        refreshICloudBackupSummary()
+        return true
+    }
+
+    @discardableResult
+    func restoreFromICloudBackupSnapshot() -> Bool {
+        let cloudStore = NSUbiquitousKeyValueStore.default
+        guard let data = cloudStore.data(forKey: iCloudBackupSnapshotKey),
+              let snapshot = try? JSONDecoder().decode(BackupSnapshot.self, from: data) else {
+            return false
+        }
+
+        applyBackupSnapshot(snapshot)
+        UserDefaults.standard.set(data, forKey: localBackupSnapshotKey)
+        UserDefaults.standard.set(snapshot.generatedAt, forKey: localBackupDateKey)
+        lastBackupDate = snapshot.generatedAt
+        refreshICloudBackupSummary()
         return true
     }
 
@@ -638,6 +709,19 @@ final class LedgerStore: ObservableObject {
         }
     }
 
+    private func schedulePersistLedgerState() {
+        statePersistTask?.cancel()
+
+        let snapshot = currentPersistedState
+        let key = persistedStateKey
+        statePersistTask = Task.detached(priority: .utility) {
+            try? await Task.sleep(nanoseconds: 220_000_000)
+            guard !Task.isCancelled else { return }
+            guard let data = try? JSONEncoder().encode(snapshot) else { return }
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
     func flushPendingSettingsPersistence() {
         settingsPersistTask?.cancel()
         settingsPersistTask = nil
@@ -645,8 +729,125 @@ final class LedgerStore: ObservableObject {
         UserDefaults.standard.set(data, forKey: appSettingsKey)
     }
 
+    func flushPendingLedgerStatePersistence() {
+        statePersistTask?.cancel()
+        statePersistTask = nil
+        guard let data = try? JSONEncoder().encode(currentPersistedState) else { return }
+        UserDefaults.standard.set(data, forKey: persistedStateKey)
+    }
+
     private func loadLastBackupDate() -> Date? {
         UserDefaults.standard.object(forKey: localBackupDateKey) as? Date
+    }
+
+    private func restorePersistedStateIfAvailable() {
+        guard let data = UserDefaults.standard.data(forKey: persistedStateKey),
+              let snapshot = try? JSONDecoder().decode(PersistedLedgerState.self, from: data) else {
+            return
+        }
+        applyPersistedState(snapshot)
+    }
+
+    private func configureICloudSync() {
+        iCloudObserver = NotificationCenter.default.addObserver(
+            forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+            object: NSUbiquitousKeyValueStore.default,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.refreshICloudBackupSummary()
+            }
+        }
+        NSUbiquitousKeyValueStore.default.synchronize()
+    }
+
+    func refreshICloudBackupSummary() {
+        let cloudStore = NSUbiquitousKeyValueStore.default
+        cloudStore.synchronize()
+
+        guard let data = cloudStore.data(forKey: iCloudBackupSnapshotKey),
+              let snapshot = try? JSONDecoder().decode(BackupSnapshot.self, from: data) else {
+            iCloudBackupSummary = nil
+            return
+        }
+
+        iCloudBackupSummary = CloudBackupSummary(
+            generatedAt: snapshot.generatedAt,
+            totalEntryCount: snapshot.entries.count,
+            totalBookCount: snapshot.books.count,
+            totalAccountCount: snapshot.accounts.count,
+            totalCategorySchemeCount: snapshot.categorySchemes.count,
+            appVersion: snapshot.appVersion,
+            backupVersion: snapshot.backupVersion,
+            fileSizeDescription: ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
+        )
+    }
+
+    private var currentPersistedState: PersistedLedgerState {
+        PersistedLedgerState(
+            appSettings: appSettings,
+            budgetLimit: budgetLimit,
+            entries: entries,
+            books: books,
+            selectedBookID: selectedBookID,
+            accounts: accounts,
+            categorySchemes: categorySchemes,
+            selectedCategorySchemeID: selectedCategorySchemeID
+        )
+    }
+
+    private func encodedBackupSnapshot() -> Data? {
+        flushPendingSettingsPersistence()
+        flushPendingLedgerStatePersistence()
+
+        return try? JSONEncoder().encode(
+            BackupSnapshot(
+                generatedAt: Date(),
+                backupVersion: "v1.0",
+                appVersion: appVersionString,
+                appSettings: appSettings,
+                budgetLimit: budgetLimit,
+                entries: entries,
+                books: books,
+                selectedBookID: selectedBookID,
+                accounts: accounts,
+                categorySchemes: categorySchemes,
+                selectedCategorySchemeID: selectedCategorySchemeID
+            )
+        )
+    }
+
+    private func applyBackupSnapshot(_ snapshot: BackupSnapshot) {
+        applyPersistedState(
+            PersistedLedgerState(
+                appSettings: snapshot.appSettings,
+                budgetLimit: snapshot.budgetLimit,
+                entries: snapshot.entries,
+                books: snapshot.books,
+                selectedBookID: snapshot.selectedBookID,
+                accounts: snapshot.accounts,
+                categorySchemes: snapshot.categorySchemes,
+                selectedCategorySchemeID: snapshot.selectedCategorySchemeID
+            )
+        )
+    }
+
+    private func applyPersistedState(_ snapshot: PersistedLedgerState) {
+        appSettings = snapshot.appSettings
+        budgetLimit = snapshot.budgetLimit
+        books = snapshot.books.isEmpty ? LedgerStore.makeSeedData().books : snapshot.books
+        entries = snapshot.entries
+        accounts = snapshot.accounts
+        categorySchemes = snapshot.categorySchemes.isEmpty ? LedgerCategoryScheme.defaultSchemes : snapshot.categorySchemes
+        selectedBookID = books.contains(where: { $0.id == snapshot.selectedBookID }) ? snapshot.selectedBookID : books[0].id
+        selectedCategorySchemeID = categorySchemes.contains(where: { $0.id == snapshot.selectedCategorySchemeID }) ? snapshot.selectedCategorySchemeID : categorySchemes[0].id
+        flushPendingSettingsPersistence()
+        flushPendingLedgerStatePersistence()
+        syncWidgetSnapshot()
+    }
+
+    private var appVersionString: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
     }
 
     private struct LocalBackupSnapshot: Codable {
@@ -658,6 +859,31 @@ final class LedgerStore: ObservableObject {
         let totalBookCount: Int
         let totalAccountCount: Int
         let totalCategorySchemeCount: Int
+    }
+
+    private struct PersistedLedgerState: Codable {
+        let appSettings: AppSettings
+        let budgetLimit: Double?
+        let entries: [LedgerEntry]
+        let books: [LedgerBook]
+        let selectedBookID: UUID
+        let accounts: [LedgerAccount]
+        let categorySchemes: [LedgerCategoryScheme]
+        let selectedCategorySchemeID: UUID
+    }
+
+    private struct BackupSnapshot: Codable {
+        let generatedAt: Date
+        let backupVersion: String
+        let appVersion: String
+        let appSettings: AppSettings
+        let budgetLimit: Double?
+        let entries: [LedgerEntry]
+        let books: [LedgerBook]
+        let selectedBookID: UUID
+        let accounts: [LedgerAccount]
+        let categorySchemes: [LedgerCategoryScheme]
+        let selectedCategorySchemeID: UUID
     }
 
     private struct SeedState {
