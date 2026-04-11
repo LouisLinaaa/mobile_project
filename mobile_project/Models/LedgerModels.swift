@@ -268,6 +268,68 @@ struct LedgerEntry: Identifiable, Codable {
     }
 }
 
+struct LedgerBookBudget: Identifiable, Hashable, Codable {
+    let id: UUID
+    let bookID: UUID
+    let monthlyLimit: Double
+    let createdAt: Date
+
+    init(
+        id: UUID = UUID(),
+        bookID: UUID,
+        monthlyLimit: Double,
+        createdAt: Date = Date()
+    ) {
+        self.id = id
+        self.bookID = bookID
+        self.monthlyLimit = monthlyLimit
+        self.createdAt = createdAt
+    }
+}
+
+struct LedgerCategoryBudget: Identifiable, Hashable, Codable {
+    let id: UUID
+    let bookID: UUID
+    let categoryID: String
+    let monthlyLimit: Double
+    let createdAt: Date
+
+    init(
+        id: UUID = UUID(),
+        bookID: UUID,
+        categoryID: String,
+        monthlyLimit: Double,
+        createdAt: Date = Date()
+    ) {
+        self.id = id
+        self.bookID = bookID
+        self.categoryID = categoryID
+        self.monthlyLimit = monthlyLimit
+        self.createdAt = createdAt
+    }
+}
+
+struct LedgerBudgetCategorySummary: Identifiable {
+    let budget: LedgerCategoryBudget
+    let category: LedgerCategory
+    let spent: Double
+
+    var id: UUID { budget.id }
+
+    var remaining: Double {
+        max(budget.monthlyLimit - spent, 0)
+    }
+
+    var overspent: Double {
+        max(spent - budget.monthlyLimit, 0)
+    }
+
+    var progress: Double {
+        guard budget.monthlyLimit > 0 else { return 0 }
+        return min(spent / budget.monthlyLimit, 1)
+    }
+}
+
 struct QuickEntryDraft {
     var kind: LedgerKind = .expense
     var amountText = ""
@@ -488,7 +550,7 @@ extension DrawerShortcut {
         DrawerShortcut(id: "stats", title: "图表统计", icon: "chart.pie", accent: .ledgerAccent, destination: .screen(.statistics)),
         DrawerShortcut(id: "assets", title: "资产管理", icon: "creditcard", accent: .ledgerGold, destination: .screen(.assets)),
         DrawerShortcut(id: "books", title: "账本管理", icon: "book.closed", accent: .ledgerMint, destination: .screen(.books)),
-        DrawerShortcut(id: "budget", title: "预算管理", icon: "square.and.pencil", accent: .ledgerLavender, destination: .placeholder("预算管理")),
+        DrawerShortcut(id: "budget", title: "预算管理", icon: "square.and.pencil", accent: .ledgerLavender, destination: .screen(.budget)),
         DrawerShortcut(id: "saving", title: "攒钱计划", icon: "dollarsign.circle", accent: .ledgerIncome, destination: .placeholder("攒钱计划")),
         DrawerShortcut(id: "widgets", title: "小组件", icon: "square.grid.2x2", accent: .ledgerCoral, destination: .screen(.widgets)),
         DrawerShortcut(id: "categories", title: "分类管理", icon: "square.grid.3x1.folder.fill.badge.plus", accent: .ledgerAccent, destination: .screen(.categories)),

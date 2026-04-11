@@ -12,6 +12,7 @@ struct HomeView: View {
     @State private var activeHomeTab: HomePrimaryTab = .ledger
     @State private var activeScreen: ManagementScreen?
     @State private var highlightedFeature: String?
+    @State private var pendingInteractionTask: Task<Void, Never>?
 
     private var isSensitiveInfoVisible: Bool {
         store.isBalanceVisible && !store.appSettings.hideSensitiveInfo
@@ -29,16 +30,20 @@ struct HomeView: View {
                     .ignoresSafeArea()
 
                 mainContent
-                    .blur(radius: isDrawerPresented ? 3 : 0)
-                    .overlay {
-                        if isDrawerPresented {
-                            Color.black.opacity(0.10)
-                                .ignoresSafeArea()
-                                .onTapGesture {
-                                    closeDrawer()
-                                }
-                        }
+                    .scaleEffect(isDrawerPresented ? 0.992 : 1, anchor: .center)
+                    .opacity(isDrawerPresented ? 0.985 : 1)
+                    .allowsHitTesting(!isDrawerPresented)
+
+                if isDrawerPresented {
+                    Button {
+                        closeDrawer()
+                    } label: {
+                        Color.black.opacity(0.10)
+                            .ignoresSafeArea()
                     }
+                    .buttonStyle(.plain)
+                    .transition(.opacity)
+                }
 
                 if isDrawerPresented {
                     DrawerMenuView(
@@ -54,7 +59,7 @@ struct HomeView: View {
                     .zIndex(1)
                 }
             }
-            .animation(.spring(response: 0.32, dampingFraction: 0.9), value: isDrawerPresented)
+            .animation(.spring(response: 0.28, dampingFraction: 0.92), value: isDrawerPresented)
         }
         .sheet(isPresented: $store.isQuickAddPresented) {
             QuickAddSheet(store: store)
@@ -173,10 +178,11 @@ struct HomeView: View {
                 Image(systemName: "line.3.horizontal")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(Color.ledgerMuted)
-                    .frame(width: 38, height: 38)
+                    .frame(width: 44, height: 44)
                     .background(.white.opacity(0.75))
                     .clipShape(Circle())
             }
+            .buttonStyle(LedgerResponsiveButtonStyle())
 
             homeTabSwitcher
 
@@ -218,7 +224,7 @@ struct HomeView: View {
             .background(isActive ? Color.ledgerAccentSoft.opacity(0.95) : Color.clear)
             .clipShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(LedgerResponsiveButtonStyle())
     }
 
     private var summaryCard: some View {
@@ -260,6 +266,7 @@ struct HomeView: View {
                         .background(Color.ledgerAccentSoft.opacity(0.85))
                         .clipShape(Capsule())
                     }
+                .buttonStyle(LedgerResponsiveButtonStyle())
             }
 
             ZStack(alignment: .leading) {
@@ -330,7 +337,7 @@ struct HomeView: View {
             Spacer()
 
             Button {
-                store.isQuickAddPresented = true
+                openQuickAddSheet()
             } label: {
                 Image(systemName: "banknote")
                     .font(.system(size: 16, weight: .semibold))
@@ -340,12 +347,13 @@ struct HomeView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 4)
             }
+            .buttonStyle(LedgerResponsiveButtonStyle())
         }
     }
 
     private var assistantCard: some View {
         Button {
-            store.isQuickAddPresented = true
+            openQuickAddSheet()
         } label: {
             HStack(spacing: 14) {
                 VStack(alignment: .leading, spacing: 10) {
@@ -382,7 +390,7 @@ struct HomeView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .ledgerCard()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(LedgerResponsiveButtonStyle())
     }
 
     private var autoLedgerCard: some View {
@@ -424,7 +432,7 @@ struct HomeView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .ledgerCard()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(LedgerResponsiveButtonStyle())
     }
 
     private var budgetDetails: some View {
@@ -437,17 +445,16 @@ struct HomeView: View {
                 Spacer()
 
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
-                        store.setStarterBudgetIfNeeded()
-                    }
+                    openScreen(.budget)
                 } label: {
                     HStack(spacing: 6) {
-                        Text(store.budgetLimit == nil ? "设置" : "调整")
+                        Text(store.budgetLimit == nil ? "去设置" : "去管理")
                         Image(systemName: "square.and.pencil")
                     }
                     .font(.system(size: 14, weight: .medium, design: .rounded))
                     .foregroundStyle(Color.ledgerMuted)
                 }
+                .buttonStyle(LedgerResponsiveButtonStyle())
             }
 
             BudgetProgressBar(progress: store.budgetProgress)
@@ -505,7 +512,7 @@ struct HomeView: View {
         HStack(spacing: 12) {
             if activeHomeTab == .ledger {
                 Button {
-                    handleDrawerDestination(.placeholder("搜索"))
+                    presentPlaceholderFeature("搜索")
                 } label: {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 18, weight: .semibold))
@@ -515,10 +522,11 @@ struct HomeView: View {
                         .clipShape(Circle())
                         .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 6)
                 }
+                .buttonStyle(LedgerResponsiveButtonStyle())
             }
 
             Button {
-                store.isQuickAddPresented = true
+                openQuickAddSheet()
             } label: {
                 HStack(spacing: 12) {
                     Image(systemName: "plus")
@@ -546,7 +554,7 @@ struct HomeView: View {
                 .clipShape(Capsule())
                 .shadow(color: Color.black.opacity(0.06), radius: 14, x: 0, y: 8)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(LedgerResponsiveButtonStyle())
         }
         .padding(.horizontal, 14)
         .padding(.top, 8)
@@ -577,7 +585,7 @@ struct HomeView: View {
         case .screen(let screen):
             openScreen(screen)
         case .placeholder(let feature):
-            highlightedFeature = feature
+            presentPlaceholderFeature(feature)
         }
     }
 
@@ -596,6 +604,7 @@ struct HomeView: View {
 
     private func openDrawer() {
         guard !isDrawerPresented else { return }
+        pendingInteractionTask?.cancel()
         withAnimation(.interactiveSpring(response: 0.34, dampingFraction: 0.9)) {
             isDrawerPresented = true
         }
@@ -609,11 +618,47 @@ struct HomeView: View {
     }
 
     private func openScreen(_ screen: ManagementScreen) {
-        if isDrawerPresented {
-            closeDrawer()
+        runAfterInteractiveTransition {
+            activeHomeTab = .ledger
+
+            guard activeScreen != screen else { return }
+
+            if activeScreen == nil {
+                activeScreen = screen
+            } else {
+                activeScreen = nil
+                DispatchQueue.main.async {
+                    activeScreen = screen
+                }
+            }
         }
-        activeHomeTab = .ledger
-        activeScreen = screen
+    }
+
+    private func openQuickAddSheet() {
+        runAfterInteractiveTransition {
+            activeHomeTab = .ledger
+            guard !store.isQuickAddPresented else { return }
+            store.isQuickAddPresented = true
+        }
+    }
+
+    private func presentPlaceholderFeature(_ feature: String) {
+        runAfterInteractiveTransition {
+            highlightedFeature = feature
+        }
+    }
+
+    private func runAfterInteractiveTransition(_ action: @escaping @MainActor () -> Void) {
+        pendingInteractionTask?.cancel()
+        pendingInteractionTask = Task { @MainActor in
+            if isDrawerPresented {
+                closeDrawer()
+                try? await Task.sleep(nanoseconds: 220_000_000)
+                guard !Task.isCancelled else { return }
+            }
+
+            action()
+        }
     }
 
     private func handleWidgetDeepLink(_ url: URL) {
@@ -623,10 +668,11 @@ struct HomeView: View {
 
         switch action {
         case "quick-add":
-            activeHomeTab = .ledger
-            store.isQuickAddPresented = true
+            openQuickAddSheet()
         case "statistics":
             openScreen(.statistics)
+        case "budget":
+            openScreen(.budget)
         case "assets":
             openScreen(.assets)
         case "books":
@@ -683,7 +729,7 @@ private struct CapsuleIconButton: View {
             .background(.white.opacity(0.78))
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(LedgerResponsiveButtonStyle())
     }
 }
 

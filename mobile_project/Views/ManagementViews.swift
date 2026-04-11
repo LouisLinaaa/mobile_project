@@ -3,6 +3,7 @@ import SwiftUI
 
 enum ManagementScreen: String, Identifiable {
     case statistics
+    case budget
     case assets
     case books
     case categories
@@ -26,12 +27,8 @@ struct ManagementSheetView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button {
+                        LedgerToolbarBackButton {
                             dismiss()
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(Color.ledgerText)
                         }
                     }
                 }
@@ -43,6 +40,8 @@ struct ManagementSheetView: View {
         switch screen {
         case .statistics:
             StatisticsView()
+        case .budget:
+            BudgetManagementView()
         case .assets:
             AssetManagementView()
         case .books:

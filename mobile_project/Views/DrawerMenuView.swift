@@ -50,12 +50,13 @@ struct DrawerMenuView: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Color.ledgerMuted)
-                    .frame(width: 30, height: 30)
+                    .frame(width: 44, height: 44)
                     .background(Color.ledgerCanvas)
                     .clipShape(Circle())
                     .padding(.top, max(8, min(22, topSafeInset * 0.35)))
                     .padding(.trailing, 12)
             }
+            .buttonStyle(LedgerResponsiveButtonStyle())
         }
         .clipped()
     }
@@ -138,7 +139,7 @@ struct DrawerMenuView: View {
                     )
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(LedgerResponsiveButtonStyle())
 
                 if index < DrawerLinkItem.settingsItems.count - 1 {
                     Divider()
@@ -196,7 +197,7 @@ private struct ShortcutSectionCard: View {
                         .padding(.vertical, 2)
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(LedgerResponsiveButtonStyle())
                 }
             }
         }
