@@ -29,6 +29,7 @@ English Version: [README.md](README.md)
 
 - 快速收入 / 支出记账
 - 首页月度概览
+- 预算管理：月预算、动态日预算、分类预算
 - 图表统计与排行
 - 资产账户管理
 - 账本管理
@@ -43,6 +44,7 @@ English Version: [README.md](README.md)
 |---|---|---|
 | 核心架构 | 已完成 | SwiftUI + 集中式状态管理 |
 | 快速记账流程 | 已完成 | 已支持收入与支出录入 |
+| 预算管理 | 已完成 | 已支持月预算、动态日预算与分类预算 |
 | 图表统计模块 | 已完成 | 趋势、排行、分类构成已具备 |
 | 账本 / 资产 / 分类管理 | 已完成 | 核心管理流程可用 |
 | Widget 支持 | 已完成 | 已包含独立 Widget target 与调试 scheme |
@@ -101,7 +103,12 @@ English Version: [README.md](README.md)
 
 ```text
 mobile_project/              主 iOS App Target
+mobile_project/Models/       共享数据模型
+mobile_project/ViewModels/   中心化状态与业务逻辑
+mobile_project/Views/        SwiftUI 页面与组件
+mobile_project/WidgetSupport/Widget 共享快照支持
 mobile_project_widgets/      Widget 扩展 Target
+scripts/                     项目脚本与本地工具
 scripts/hooks/               Hook 实现脚本
 .githooks/                   Git Hook 入口
 HOOKS.md                     Hook 说明文档
@@ -178,7 +185,8 @@ git config core.hooksPath .githooks
 
 - 只检查 **已暂存** 的 `.swift` 内容
 - 拦截 Tab 缩进和行尾空格
-- 如果本机安装了 `swiftformat`，会额外执行 `swiftformat --lint`
+- 只有当本机安装了 `swiftformat` 且仓库内存在 `.swiftformat` 配置时，才会执行 `swiftformat --lint`
+- 避免在仓库尚未定义格式策略时，直接用 SwiftFormat 默认规则阻塞提交
 
 `pre-push`
 
@@ -191,6 +199,11 @@ git config core.hooksPath .githooks
 ```bash
 brew install swiftformat
 ```
+
+仓库已经包含项目级格式配置：
+
+- `.swiftformat`
+- `.swift-version`
 
 ### 手动验证
 
@@ -219,6 +232,7 @@ SKIP_XCODE_BUILD_HOOK=1 git push
 - [ ] 切换到支持 iCloud 的开发者团队后接入真实云备份
 - [ ] 实现周期记账与自动化规则引擎
 - [ ] 增加 AI 解析与助手相关流程
+- [ ] 继续优化点击响应、转场与交互稳定性
 - [ ] 完成课程报告与成员贡献说明
 - [ ] 录制并提交演示视频
 

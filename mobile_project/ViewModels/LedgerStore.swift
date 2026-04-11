@@ -14,7 +14,13 @@ final class LedgerStore: ObservableObject {
             }
         }
     }
-    @Published var budgetLimit: Double? {
+    @Published private(set) var bookBudgets: [LedgerBookBudget] {
+        didSet {
+            schedulePersistLedgerState()
+            syncWidgetSnapshot()
+        }
+    }
+    @Published private(set) var categoryBudgets: [LedgerCategoryBudget] {
         didSet {
             schedulePersistLedgerState()
             syncWidgetSnapshot()
@@ -82,18 +88,19 @@ final class LedgerStore: ObservableObject {
 
     init() {
         let seed = LedgerStore.makeSeedData()
-        self.appSettings = AppSettings()
-        self.budgetLimit = seed.budgetLimit
-        self.entries = seed.entries
-        self.books = seed.books
-        self.selectedBookID = seed.selectedBookID
-        self.accounts = seed.accounts
-        self.categorySchemes = seed.categorySchemes
-        self.selectedCategorySchemeID = seed.selectedCategorySchemeID
-        self.lastBackupDate = nil
-        self.iCloudBackupSummary = nil
-        self.appSettings = loadAppSettings()
-        self.lastBackupDate = loadLastBackupDate()
+        appSettings = AppSettings()
+        bookBudgets = seed.bookBudgets
+        categoryBudgets = seed.categoryBudgets
+        entries = seed.entries
+        books = seed.books
+        selectedBookID = seed.selectedBookID
+        accounts = seed.accounts
+        categorySchemes = seed.categorySchemes
+        selectedCategorySchemeID = seed.selectedCategorySchemeID
+        lastBackupDate = nil
+        iCloudBackupSummary = nil
+        appSettings = loadAppSettings()
+        lastBackupDate = loadLastBackupDate()
         restorePersistedStateIfAvailable()
         configureICloudSync()
         refreshICloudBackupSummary()
@@ -112,8 +119,7 @@ final class LedgerStore: ObservableObject {
         uniqueStrings(
             accounts
                 .filter { $0.group != .credit && $0.group != .loan }
-                .map(\.name) + ["支付宝", "微信", "银行卡", "现金"]
-        )
+                .map(\.name) + ["支付宝", "微信", "银行卡", "现金"])
     }
 
     var currentBook: LedgerBook {
@@ -128,6 +134,10 @@ final class LedgerStore: ObservableObject {
         entries
             .filter { $0.bookID == currentBook.id }
             .sorted { $0.date > $1.date }
+    }
+
+    var budgetLimit: Double? {
+        bookBudget(for: currentBook.id)?.monthlyLimit
     }
 
     var currentMonthExpense: Double {
@@ -148,7 +158,7 @@ final class LedgerStore: ObservableObject {
 
     var totalAssets: Double {
         accounts
-            .filter { $0.group.affectsAssets }
+            .filter(\.group.affectsAssets)
             .reduce(0) { $0 + $1.balance }
     }
 
@@ -167,6 +177,65 @@ final class LedgerStore: ObservableObject {
         return min(currentMonthExpense / budgetLimit, 1)
     }
 
+    var currentBudgetRemaining: Double? {
+        guard let budgetLimit else { return nil }
+        return max(budgetLimit - currentMonthExpense, 0)
+    }
+
+    var currentBudgetOverspent: Double {
+        guard let budgetLimit else { return 0 }
+        return max(currentMonthExpense - budgetLimit, 0)
+    }
+
+    var currentStatisticsMonthDayCount: Int {
+        let days = calendar.dateComponents(
+            [.day],
+            from: calendar.startOfDay(for: currentStatisticsMonthInterval.start),
+            to: currentStatisticsMonthInterval.end).day ?? 30
+        return max(days, 1)
+    }
+
+    var remainingBudgetDaysIncludingToday: Int {
+        let today = calendar.startOfDay(for: Date())
+        let intervalStart = calendar.startOfDay(for: currentStatisticsMonthInterval.start)
+        let intervalEnd = calendar
+            .date(byAdding: .day, value: -1, to: currentStatisticsMonthInterval.end) ?? intervalStart
+
+        if today < intervalStart {
+            return currentStatisticsMonthDayCount
+        }
+
+        if today > intervalEnd {
+            return 1
+        }
+
+        let days = calendar.dateComponents([.day], from: today, to: intervalEnd).day ?? 0
+        return max(days + 1, 1)
+    }
+
+    var suggestedDailyBudget: Double? {
+        guard let currentBudgetRemaining else { return nil }
+        return currentBudgetRemaining / Double(remainingBudgetDaysIncludingToday)
+    }
+
+    var currentBookCategoryBudgetSummaries: [LedgerBudgetCategorySummary] {
+        categoryBudgets
+            .filter { $0.bookID == currentBook.id }
+            .compactMap { budget in
+                guard let category = category(withID: budget.categoryID) else { return nil }
+                return LedgerBudgetCategorySummary(
+                    budget: budget,
+                    category: category,
+                    spent: expenseTotal(for: budget.categoryID, in: budget.bookID))
+            }
+            .sorted { lhs, rhs in
+                if lhs.progress == rhs.progress {
+                    return lhs.spent > rhs.spent
+                }
+                return lhs.progress > rhs.progress
+            }
+    }
+
     var todayEntries: [LedgerEntry] {
         currentBookEntries
             .filter { calendar.isDateInToday($0.date) }
@@ -177,12 +246,12 @@ final class LedgerStore: ObservableObject {
         Set(
             currentBookEntries.compactMap { entry in
                 guard calendar.isDate(entry.date, equalTo: Date(), toGranularity: .month),
-                      calendar.isDate(entry.date, equalTo: Date(), toGranularity: .year) else {
+                      calendar.isDate(entry.date, equalTo: Date(), toGranularity: .year)
+                else {
                     return nil
                 }
                 return calendar.component(.day, from: entry.date)
-            }
-        )
+            })
     }
 
     var currentBookRecordDays: Int {
@@ -237,6 +306,25 @@ final class LedgerStore: ObservableObject {
         }
     }
 
+    func allCategories(for kind: LedgerKind) -> [LedgerCategory] {
+        let source: [LedgerCategory]
+        switch kind {
+        case .expense:
+            source = categorySchemes.flatMap(\.expenseCategories)
+        case .income:
+            source = categorySchemes.flatMap(\.incomeCategories)
+        }
+
+        var seen = Set<String>()
+        return source.filter { category in
+            seen.insert(category.id).inserted
+        }
+    }
+
+    func category(withID id: String) -> LedgerCategory? {
+        (allCategories(for: .expense) + allCategories(for: .income)).first { $0.id == id }
+    }
+
     func accountTemplates(for group: LedgerAccountGroup) -> [LedgerAccountTemplate] {
         LedgerAccountTemplate.templates(for: group)
     }
@@ -253,14 +341,14 @@ final class LedgerStore: ObservableObject {
             amountText: "",
             selectedCategory: categories(for: .expense).first ?? LedgerCategory.defaultCategory(for: .expense),
             paymentMethod: paymentMethods.first ?? "支付宝",
-            note: ""
-        )
+            note: "")
     }
 
     func addEntry(from draft: QuickEntryDraft) {
         guard let amount = draft.parsedAmount, amount > 0 else { return }
 
-        let category = categories(for: draft.kind).first(where: { $0.id == draft.selectedCategory.id }) ?? draft.selectedCategory
+        let category = categories(for: draft.kind).first(where: { $0.id == draft.selectedCategory.id }) ?? draft
+            .selectedCategory
         let title = draft.note.isEmpty ? category.name : draft.note
 
         addEntry(
@@ -270,8 +358,7 @@ final class LedgerStore: ObservableObject {
             paymentMethod: draft.paymentMethod,
             note: draft.note,
             title: title,
-            date: Date()
-        )
+            date: Date())
     }
 
     func addEntry(
@@ -281,8 +368,8 @@ final class LedgerStore: ObservableObject {
         paymentMethod: String,
         note: String,
         title: String,
-        date: Date
-    ) {
+        date: Date)
+    {
         let entry = LedgerEntry(
             bookID: currentBook.id,
             title: title,
@@ -291,8 +378,7 @@ final class LedgerStore: ObservableObject {
             category: category,
             paymentMethod: paymentMethod,
             note: note,
-            date: date
-        )
+            date: date)
 
         entries.insert(entry, at: 0)
     }
@@ -312,8 +398,73 @@ final class LedgerStore: ObservableObject {
 
     func setStarterBudgetIfNeeded() {
         if budgetLimit == nil {
-            budgetLimit = 3600
+            setBudgetLimit(3600)
         }
+    }
+
+    func setBudgetLimit(_ limit: Double?, for bookID: UUID? = nil) {
+        let resolvedBookID = bookID ?? currentBook.id
+        bookBudgets.removeAll { $0.bookID == resolvedBookID }
+
+        guard let limit, limit > 0 else { return }
+
+        bookBudgets.append(
+            LedgerBookBudget(
+                bookID: resolvedBookID,
+                monthlyLimit: limit))
+    }
+
+    func upsertCategoryBudget(categoryID: String, monthlyLimit: Double, for bookID: UUID? = nil) {
+        let resolvedBookID = bookID ?? currentBook.id
+        categoryBudgets.removeAll {
+            $0.bookID == resolvedBookID && $0.categoryID == categoryID
+        }
+
+        guard monthlyLimit > 0 else { return }
+
+        categoryBudgets.append(
+            LedgerCategoryBudget(
+                bookID: resolvedBookID,
+                categoryID: categoryID,
+                monthlyLimit: monthlyLimit))
+    }
+
+    func removeCategoryBudget(_ budget: LedgerCategoryBudget) {
+        categoryBudgets.removeAll { $0.id == budget.id }
+    }
+
+    func bookBudget(for bookID: UUID) -> LedgerBookBudget? {
+        bookBudgets.first { $0.bookID == bookID }
+    }
+
+    func categoryBudget(for categoryID: String, in bookID: UUID? = nil) -> LedgerCategoryBudget? {
+        let resolvedBookID = bookID ?? currentBook.id
+        return categoryBudgets.first {
+            $0.bookID == resolvedBookID && $0.categoryID == categoryID
+        }
+    }
+
+    func expenseTotal(for categoryID: String, in bookID: UUID) -> Double {
+        let interval = currentStatisticsMonthInterval
+        return entries
+            .filter { entry in
+                entry.bookID == bookID &&
+                    entry.kind == .expense &&
+                    entry.category.id == categoryID &&
+                    interval.contains(entry.date)
+            }
+            .reduce(0) { $0 + $1.amount }
+    }
+
+    func dayExpenseTotal(for date: Date, in bookID: UUID) -> Double {
+        let dayStart = calendar.startOfDay(for: date)
+        return entries
+            .filter { entry in
+                entry.bookID == bookID &&
+                    entry.kind == .expense &&
+                    calendar.startOfDay(for: entry.date) == dayStart
+            }
+            .reduce(0) { $0 + $1.amount }
     }
 
     func setMonthStartDay(_ day: Int) {
@@ -339,7 +490,8 @@ final class LedgerStore: ObservableObject {
             } else if !settings.pushDailyLedger &&
                 !settings.pushBudgetReminder &&
                 !settings.pushFeatureRecommendation &&
-                !settings.pushBillReview {
+                !settings.pushBillReview
+            {
                 settings.pushDailyLedger = true
                 settings.pushBudgetReminder = true
                 settings.pushFeatureRecommendation = true
@@ -352,8 +504,8 @@ final class LedgerStore: ObservableObject {
         dailyLedger: Bool? = nil,
         budgetReminder: Bool? = nil,
         featureRecommendation: Bool? = nil,
-        billReview: Bool? = nil
-    ) {
+        billReview: Bool? = nil)
+    {
         updateSettings { settings in
             if let dailyLedger {
                 settings.pushDailyLedger = dailyLedger
@@ -419,7 +571,8 @@ final class LedgerStore: ObservableObject {
     func restoreFromICloudBackupSnapshot() -> Bool {
         let cloudStore = NSUbiquitousKeyValueStore.default
         guard let data = cloudStore.data(forKey: iCloudBackupSnapshotKey),
-              let snapshot = try? JSONDecoder().decode(BackupSnapshot.self, from: data) else {
+              let snapshot = try? JSONDecoder().decode(BackupSnapshot.self, from: data)
+        else {
             return false
         }
 
@@ -447,8 +600,7 @@ final class LedgerStore: ObservableObject {
             note: note.isEmpty ? "自定义账本" : note,
             createdAt: Date(),
             icon: bookIcons[books.count % bookIcons.count],
-            tintStyle: LedgerTintStyle.allCases[books.count % LedgerTintStyle.allCases.count]
-        )
+            tintStyle: LedgerTintStyle.allCases[books.count % LedgerTintStyle.allCases.count])
 
         books.append(book)
         selectedBookID = book.id
@@ -473,8 +625,7 @@ final class LedgerStore: ObservableObject {
             icon: template.icon,
             tintStyle: template.tintStyle,
             group: template.group,
-            balance: balance
-        )
+            balance: balance)
 
         accounts.append(account)
     }
@@ -489,8 +640,7 @@ final class LedgerStore: ObservableObject {
             icon: template.icon,
             tintStyle: template.tintStyle,
             group: template.group,
-            balance: balance
-        )
+            balance: balance)
     }
 
     func deleteAccount(_ account: LedgerAccount) {
@@ -503,8 +653,7 @@ final class LedgerStore: ObservableObject {
             name: name,
             note: note.isEmpty ? "自定义分类方案" : note,
             expenseCategories: base.expenseCategories,
-            incomeCategories: base.incomeCategories
-        )
+            incomeCategories: base.incomeCategories)
 
         categorySchemes.append(scheme)
         selectedCategorySchemeID = scheme.id
@@ -515,8 +664,8 @@ final class LedgerStore: ObservableObject {
         kind: LedgerKind,
         name: String,
         icon: String,
-        tintStyle: LedgerTintStyle
-    ) {
+        tintStyle: LedgerTintStyle)
+    {
         guard let index = categorySchemes.firstIndex(where: { $0.id == schemeID }) else { return }
 
         var scheme = categorySchemes[index]
@@ -533,8 +682,7 @@ final class LedgerStore: ObservableObject {
             name: safeName,
             icon: icon,
             tintStyle: tintStyle,
-            kind: kind
-        )
+            kind: kind)
 
         switch kind {
         case .expense:
@@ -543,16 +691,14 @@ final class LedgerStore: ObservableObject {
                 name: scheme.name,
                 note: scheme.note,
                 expenseCategories: scheme.expenseCategories + [category],
-                incomeCategories: scheme.incomeCategories
-            )
+                incomeCategories: scheme.incomeCategories)
         case .income:
             scheme = LedgerCategoryScheme(
                 id: scheme.id,
                 name: scheme.name,
                 note: scheme.note,
                 expenseCategories: scheme.expenseCategories,
-                incomeCategories: scheme.incomeCategories + [category]
-            )
+                incomeCategories: scheme.incomeCategories + [category])
         }
 
         categorySchemes[index] = scheme
@@ -570,8 +716,7 @@ final class LedgerStore: ObservableObject {
                 name: scheme.name,
                 note: scheme.note,
                 expenseCategories: filtered,
-                incomeCategories: scheme.incomeCategories
-            )
+                incomeCategories: scheme.incomeCategories)
         case .income:
             let filtered = scheme.incomeCategories.filter { $0.id != categoryID }
             categorySchemes[index] = LedgerCategoryScheme(
@@ -579,9 +724,21 @@ final class LedgerStore: ObservableObject {
                 name: scheme.name,
                 note: scheme.note,
                 expenseCategories: scheme.expenseCategories,
-                incomeCategories: filtered
-            )
+                incomeCategories: filtered)
         }
+
+        let categoryStillExists = categorySchemes.contains { scheme in
+            switch kind {
+            case .expense:
+                scheme.expenseCategories.contains { $0.id == categoryID }
+            case .income:
+                scheme.incomeCategories.contains { $0.id == categoryID }
+            }
+        }
+
+        guard !categoryStillExists else { return }
+
+        categoryBudgets.removeAll { $0.categoryID == categoryID }
     }
 
     private func monthlyTotal(kind: LedgerKind, for bookID: UUID) -> Double {
@@ -589,10 +746,47 @@ final class LedgerStore: ObservableObject {
         return entries
             .filter { entry in
                 entry.bookID == bookID &&
-                entry.kind == kind &&
-                interval.contains(entry.date)
+                    entry.kind == kind &&
+                    interval.contains(entry.date)
             }
             .reduce(0) { $0 + $1.amount }
+    }
+
+    private func migratedBookBudgets(
+        _ budgets: [LedgerBookBudget],
+        legacyBudgetLimit: Double?,
+        books: [LedgerBook],
+        fallbackBookID: UUID) -> [LedgerBookBudget]
+    {
+        let validBookIDs = Set(books.map(\.id))
+        let sanitized = budgets
+            .filter { validBookIDs.contains($0.bookID) && $0.monthlyLimit > 0 }
+
+        guard !sanitized.isEmpty else {
+            guard let legacyBudgetLimit, legacyBudgetLimit > 0 else { return [] }
+            return [
+                LedgerBookBudget(
+                    bookID: validBookIDs
+                        .contains(fallbackBookID) ? fallbackBookID : (books.first?.id ?? fallbackBookID),
+                    monthlyLimit: legacyBudgetLimit)
+            ]
+        }
+
+        return sanitized
+    }
+
+    private func sanitizedCategoryBudgets(
+        _ budgets: [LedgerCategoryBudget],
+        books: [LedgerBook]) -> [LedgerCategoryBudget]
+    {
+        let validBookIDs = Set(books.map(\.id))
+        let validCategoryIDs = Set((allCategories(for: .expense) + allCategories(for: .income)).map(\.id))
+
+        return budgets.filter {
+            validBookIDs.contains($0.bookID) &&
+                validCategoryIDs.contains($0.categoryID) &&
+                $0.monthlyLimit > 0
+        }
     }
 
     private func makeStatisticsMonthInterval(for date: Date) -> DateInterval {
@@ -639,8 +833,7 @@ final class LedgerStore: ObservableObject {
                 id: first.category.id,
                 name: first.category.name,
                 amount: total,
-                tintHex: hexColor(for: first.category.tintStyle)
-            )
+                tintHex: hexColor(for: first.category.tintStyle))
         }
         .sorted { $0.amount > $1.amount }
         .prefix(4)
@@ -658,8 +851,7 @@ final class LedgerStore: ObservableObject {
             autoLedgerPendingCount: 0,
             autoLedgerPostedCount: 0,
             autoLedgerFailedCount: 0,
-            autoLedgerUpdatedAt: Date()
-        )
+            autoLedgerUpdatedAt: Date())
     }
 
     private func hexColor(for style: LedgerTintStyle) -> String {
@@ -690,7 +882,8 @@ final class LedgerStore: ObservableObject {
 
     private func loadAppSettings() -> AppSettings {
         guard let data = UserDefaults.standard.data(forKey: appSettingsKey),
-              let settings = try? JSONDecoder().decode(AppSettings.self, from: data) else {
+              let settings = try? JSONDecoder().decode(AppSettings.self, from: data)
+        else {
             return AppSettings()
         }
         return settings
@@ -742,7 +935,8 @@ final class LedgerStore: ObservableObject {
 
     private func restorePersistedStateIfAvailable() {
         guard let data = UserDefaults.standard.data(forKey: persistedStateKey),
-              let snapshot = try? JSONDecoder().decode(PersistedLedgerState.self, from: data) else {
+              let snapshot = try? JSONDecoder().decode(PersistedLedgerState.self, from: data)
+        else {
             return
         }
         applyPersistedState(snapshot)
@@ -752,8 +946,8 @@ final class LedgerStore: ObservableObject {
         iCloudObserver = NotificationCenter.default.addObserver(
             forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
             object: NSUbiquitousKeyValueStore.default,
-            queue: .main
-        ) { [weak self] _ in
+            queue: .main)
+        { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.refreshICloudBackupSummary()
             }
@@ -766,7 +960,8 @@ final class LedgerStore: ObservableObject {
         cloudStore.synchronize()
 
         guard let data = cloudStore.data(forKey: iCloudBackupSnapshotKey),
-              let snapshot = try? JSONDecoder().decode(BackupSnapshot.self, from: data) else {
+              let snapshot = try? JSONDecoder().decode(BackupSnapshot.self, from: data)
+        else {
             iCloudBackupSummary = nil
             return
         }
@@ -779,21 +974,21 @@ final class LedgerStore: ObservableObject {
             totalCategorySchemeCount: snapshot.categorySchemes.count,
             appVersion: snapshot.appVersion,
             backupVersion: snapshot.backupVersion,
-            fileSizeDescription: ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
-        )
+            fileSizeDescription: ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file))
     }
 
     private var currentPersistedState: PersistedLedgerState {
         PersistedLedgerState(
             appSettings: appSettings,
             budgetLimit: budgetLimit,
+            bookBudgets: bookBudgets,
+            categoryBudgets: categoryBudgets,
             entries: entries,
             books: books,
             selectedBookID: selectedBookID,
             accounts: accounts,
             categorySchemes: categorySchemes,
-            selectedCategorySchemeID: selectedCategorySchemeID
-        )
+            selectedCategorySchemeID: selectedCategorySchemeID)
     }
 
     private func encodedBackupSnapshot() -> Data? {
@@ -807,14 +1002,14 @@ final class LedgerStore: ObservableObject {
                 appVersion: appVersionString,
                 appSettings: appSettings,
                 budgetLimit: budgetLimit,
+                bookBudgets: bookBudgets,
+                categoryBudgets: categoryBudgets,
                 entries: entries,
                 books: books,
                 selectedBookID: selectedBookID,
                 accounts: accounts,
                 categorySchemes: categorySchemes,
-                selectedCategorySchemeID: selectedCategorySchemeID
-            )
-        )
+                selectedCategorySchemeID: selectedCategorySchemeID))
     }
 
     private func applyBackupSnapshot(_ snapshot: BackupSnapshot) {
@@ -822,25 +1017,42 @@ final class LedgerStore: ObservableObject {
             PersistedLedgerState(
                 appSettings: snapshot.appSettings,
                 budgetLimit: snapshot.budgetLimit,
+                bookBudgets: snapshot.bookBudgets,
+                categoryBudgets: snapshot.categoryBudgets,
                 entries: snapshot.entries,
                 books: snapshot.books,
                 selectedBookID: snapshot.selectedBookID,
                 accounts: snapshot.accounts,
                 categorySchemes: snapshot.categorySchemes,
-                selectedCategorySchemeID: snapshot.selectedCategorySchemeID
-            )
-        )
+                selectedCategorySchemeID: snapshot.selectedCategorySchemeID))
     }
 
     private func applyPersistedState(_ snapshot: PersistedLedgerState) {
+        let fallbackSeed = LedgerStore.makeSeedData()
+        let restoredBooks = snapshot.books.isEmpty ? fallbackSeed.books : snapshot.books
+        let restoredSchemes = snapshot.categorySchemes.isEmpty ? LedgerCategoryScheme.defaultSchemes : snapshot
+            .categorySchemes
+        let resolvedBookID = restoredBooks.contains(where: { $0.id == snapshot.selectedBookID }) ? snapshot
+            .selectedBookID : restoredBooks[0].id
+        let resolvedSchemeID = restoredSchemes
+            .contains(where: { $0.id == snapshot.selectedCategorySchemeID }) ? snapshot
+            .selectedCategorySchemeID : restoredSchemes[0].id
+
         appSettings = snapshot.appSettings
-        budgetLimit = snapshot.budgetLimit
-        books = snapshot.books.isEmpty ? LedgerStore.makeSeedData().books : snapshot.books
         entries = snapshot.entries
         accounts = snapshot.accounts
-        categorySchemes = snapshot.categorySchemes.isEmpty ? LedgerCategoryScheme.defaultSchemes : snapshot.categorySchemes
-        selectedBookID = books.contains(where: { $0.id == snapshot.selectedBookID }) ? snapshot.selectedBookID : books[0].id
-        selectedCategorySchemeID = categorySchemes.contains(where: { $0.id == snapshot.selectedCategorySchemeID }) ? snapshot.selectedCategorySchemeID : categorySchemes[0].id
+        books = restoredBooks
+        categorySchemes = restoredSchemes
+        selectedBookID = resolvedBookID
+        selectedCategorySchemeID = resolvedSchemeID
+        bookBudgets = migratedBookBudgets(
+            snapshot.bookBudgets,
+            legacyBudgetLimit: snapshot.budgetLimit,
+            books: restoredBooks,
+            fallbackBookID: resolvedBookID)
+        categoryBudgets = sanitizedCategoryBudgets(
+            snapshot.categoryBudgets,
+            books: restoredBooks)
         flushPendingSettingsPersistence()
         flushPendingLedgerStatePersistence()
         syncWidgetSnapshot()
@@ -864,12 +1076,66 @@ final class LedgerStore: ObservableObject {
     private struct PersistedLedgerState: Codable {
         let appSettings: AppSettings
         let budgetLimit: Double?
+        let bookBudgets: [LedgerBookBudget]
+        let categoryBudgets: [LedgerCategoryBudget]
         let entries: [LedgerEntry]
         let books: [LedgerBook]
         let selectedBookID: UUID
         let accounts: [LedgerAccount]
         let categorySchemes: [LedgerCategoryScheme]
         let selectedCategorySchemeID: UUID
+
+        private enum CodingKeys: String, CodingKey {
+            case appSettings
+            case budgetLimit
+            case bookBudgets
+            case categoryBudgets
+            case entries
+            case books
+            case selectedBookID
+            case accounts
+            case categorySchemes
+            case selectedCategorySchemeID
+        }
+
+        init(
+            appSettings: AppSettings,
+            budgetLimit: Double?,
+            bookBudgets: [LedgerBookBudget],
+            categoryBudgets: [LedgerCategoryBudget],
+            entries: [LedgerEntry],
+            books: [LedgerBook],
+            selectedBookID: UUID,
+            accounts: [LedgerAccount],
+            categorySchemes: [LedgerCategoryScheme],
+            selectedCategorySchemeID: UUID)
+        {
+            self.appSettings = appSettings
+            self.budgetLimit = budgetLimit
+            self.bookBudgets = bookBudgets
+            self.categoryBudgets = categoryBudgets
+            self.entries = entries
+            self.books = books
+            self.selectedBookID = selectedBookID
+            self.accounts = accounts
+            self.categorySchemes = categorySchemes
+            self.selectedCategorySchemeID = selectedCategorySchemeID
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            appSettings = try container.decode(AppSettings.self, forKey: .appSettings)
+            budgetLimit = try container.decodeIfPresent(Double.self, forKey: .budgetLimit)
+            bookBudgets = try container.decodeIfPresent([LedgerBookBudget].self, forKey: .bookBudgets) ?? []
+            categoryBudgets = try container.decodeIfPresent([LedgerCategoryBudget].self, forKey: .categoryBudgets) ?? []
+            entries = try container.decodeIfPresent([LedgerEntry].self, forKey: .entries) ?? []
+            books = try container.decodeIfPresent([LedgerBook].self, forKey: .books) ?? []
+            selectedBookID = try container.decodeIfPresent(UUID.self, forKey: .selectedBookID) ?? UUID()
+            accounts = try container.decodeIfPresent([LedgerAccount].self, forKey: .accounts) ?? []
+            categorySchemes = try container.decodeIfPresent([LedgerCategoryScheme].self, forKey: .categorySchemes) ?? []
+            selectedCategorySchemeID = try container
+                .decodeIfPresent(UUID.self, forKey: .selectedCategorySchemeID) ?? UUID()
+        }
     }
 
     private struct BackupSnapshot: Codable {
@@ -878,16 +1144,83 @@ final class LedgerStore: ObservableObject {
         let appVersion: String
         let appSettings: AppSettings
         let budgetLimit: Double?
+        let bookBudgets: [LedgerBookBudget]
+        let categoryBudgets: [LedgerCategoryBudget]
         let entries: [LedgerEntry]
         let books: [LedgerBook]
         let selectedBookID: UUID
         let accounts: [LedgerAccount]
         let categorySchemes: [LedgerCategoryScheme]
         let selectedCategorySchemeID: UUID
+
+        private enum CodingKeys: String, CodingKey {
+            case generatedAt
+            case backupVersion
+            case appVersion
+            case appSettings
+            case budgetLimit
+            case bookBudgets
+            case categoryBudgets
+            case entries
+            case books
+            case selectedBookID
+            case accounts
+            case categorySchemes
+            case selectedCategorySchemeID
+        }
+
+        init(
+            generatedAt: Date,
+            backupVersion: String,
+            appVersion: String,
+            appSettings: AppSettings,
+            budgetLimit: Double?,
+            bookBudgets: [LedgerBookBudget],
+            categoryBudgets: [LedgerCategoryBudget],
+            entries: [LedgerEntry],
+            books: [LedgerBook],
+            selectedBookID: UUID,
+            accounts: [LedgerAccount],
+            categorySchemes: [LedgerCategoryScheme],
+            selectedCategorySchemeID: UUID)
+        {
+            self.generatedAt = generatedAt
+            self.backupVersion = backupVersion
+            self.appVersion = appVersion
+            self.appSettings = appSettings
+            self.budgetLimit = budgetLimit
+            self.bookBudgets = bookBudgets
+            self.categoryBudgets = categoryBudgets
+            self.entries = entries
+            self.books = books
+            self.selectedBookID = selectedBookID
+            self.accounts = accounts
+            self.categorySchemes = categorySchemes
+            self.selectedCategorySchemeID = selectedCategorySchemeID
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            generatedAt = try container.decode(Date.self, forKey: .generatedAt)
+            backupVersion = try container.decode(String.self, forKey: .backupVersion)
+            appVersion = try container.decode(String.self, forKey: .appVersion)
+            appSettings = try container.decode(AppSettings.self, forKey: .appSettings)
+            budgetLimit = try container.decodeIfPresent(Double.self, forKey: .budgetLimit)
+            bookBudgets = try container.decodeIfPresent([LedgerBookBudget].self, forKey: .bookBudgets) ?? []
+            categoryBudgets = try container.decodeIfPresent([LedgerCategoryBudget].self, forKey: .categoryBudgets) ?? []
+            entries = try container.decodeIfPresent([LedgerEntry].self, forKey: .entries) ?? []
+            books = try container.decodeIfPresent([LedgerBook].self, forKey: .books) ?? []
+            selectedBookID = try container.decodeIfPresent(UUID.self, forKey: .selectedBookID) ?? UUID()
+            accounts = try container.decodeIfPresent([LedgerAccount].self, forKey: .accounts) ?? []
+            categorySchemes = try container.decodeIfPresent([LedgerCategoryScheme].self, forKey: .categorySchemes) ?? []
+            selectedCategorySchemeID = try container
+                .decodeIfPresent(UUID.self, forKey: .selectedCategorySchemeID) ?? UUID()
+        }
     }
 
     private struct SeedState {
-        let budgetLimit: Double
+        let bookBudgets: [LedgerBookBudget]
+        let categoryBudgets: [LedgerCategoryBudget]
         let books: [LedgerBook]
         let selectedBookID: UUID
         let accounts: [LedgerAccount]
@@ -905,37 +1238,81 @@ final class LedgerStore: ObservableObject {
             note: "全部生活收支",
             createdAt: calendar.date(byAdding: .day, value: -20, to: now) ?? now,
             icon: "star.square.fill",
-            tintStyle: .gold
-        )
+            tintStyle: .gold)
 
         let workBook = LedgerBook(
             name: "工作账本",
             note: "差旅和项目收支",
             createdAt: calendar.date(byAdding: .day, value: -8, to: now) ?? now,
             icon: "briefcase.fill",
-            tintStyle: .accent
-        )
+            tintStyle: .accent)
 
         let schemes = LedgerCategoryScheme.defaultSchemes
         let defaultScheme = schemes[0]
         let workScheme = schemes[1]
 
         let accounts = [
-            LedgerAccount(templateID: "wechat", name: "微信余额", icon: "message.fill", tintStyle: .mint, group: .asset, balance: 1480),
-            LedgerAccount(templateID: "bank", name: "招商储蓄卡", icon: "creditcard.fill", tintStyle: .accent, group: .asset, balance: 8650),
-            LedgerAccount(templateID: "yuebao", name: "余额宝", icon: "wallet.pass.fill", tintStyle: .gold, group: .investment, balance: 3600),
-            LedgerAccount(templateID: "credit-card", name: "信用卡", icon: "creditcard.trianglebadge.exclamationmark", tintStyle: .coral, group: .credit, balance: 920)
+            LedgerAccount(
+                templateID: "wechat",
+                name: "微信余额",
+                icon: "message.fill",
+                tintStyle: .mint,
+                group: .asset,
+                balance: 1480),
+            LedgerAccount(
+                templateID: "bank",
+                name: "招商储蓄卡",
+                icon: "creditcard.fill",
+                tintStyle: .accent,
+                group: .asset,
+                balance: 8650),
+            LedgerAccount(
+                templateID: "yuebao",
+                name: "余额宝",
+                icon: "wallet.pass.fill",
+                tintStyle: .gold,
+                group: .investment,
+                balance: 3600),
+            LedgerAccount(
+                templateID: "credit-card",
+                name: "信用卡",
+                icon: "creditcard.trianglebadge.exclamationmark",
+                tintStyle: .coral,
+                group: .credit,
+                balance: 920)
         ]
 
-        let meal = defaultScheme.expenseCategories.first(where: { $0.id == "expense.meal" }) ?? LedgerCategory.defaultCategory(for: .expense)
-        let shopping = defaultScheme.expenseCategories.first(where: { $0.id == "expense.shopping" }) ?? LedgerCategory.defaultCategory(for: .expense)
-        let transit = defaultScheme.expenseCategories.first(where: { $0.id == "expense.transit" }) ?? LedgerCategory.defaultCategory(for: .expense)
-        let health = defaultScheme.expenseCategories.first(where: { $0.id == "expense.health" }) ?? LedgerCategory.defaultCategory(for: .expense)
-        let salary = defaultScheme.incomeCategories.first(where: { $0.id == "income.salary" }) ?? LedgerCategory.defaultCategory(for: .income)
-        let refund = defaultScheme.incomeCategories.first(where: { $0.id == "income.refund" }) ?? LedgerCategory.defaultCategory(for: .income)
-        let trip = workScheme.expenseCategories.first(where: { $0.id == "work.trip" }) ?? LedgerCategory.defaultCategory(for: .expense)
-        let software = workScheme.expenseCategories.first(where: { $0.id == "work.software" }) ?? LedgerCategory.defaultCategory(for: .expense)
-        let project = workScheme.incomeCategories.first(where: { $0.id == "work.project" }) ?? LedgerCategory.defaultCategory(for: .income)
+        let meal = defaultScheme.expenseCategories.first(where: { $0.id == "expense.meal" }) ?? LedgerCategory
+            .defaultCategory(for: .expense)
+        let shopping = defaultScheme.expenseCategories.first(where: { $0.id == "expense.shopping" }) ?? LedgerCategory
+            .defaultCategory(for: .expense)
+        let transit = defaultScheme.expenseCategories.first(where: { $0.id == "expense.transit" }) ?? LedgerCategory
+            .defaultCategory(for: .expense)
+        let health = defaultScheme.expenseCategories.first(where: { $0.id == "expense.health" }) ?? LedgerCategory
+            .defaultCategory(for: .expense)
+        let salary = defaultScheme.incomeCategories.first(where: { $0.id == "income.salary" }) ?? LedgerCategory
+            .defaultCategory(for: .income)
+        let refund = defaultScheme.incomeCategories.first(where: { $0.id == "income.refund" }) ?? LedgerCategory
+            .defaultCategory(for: .income)
+        let trip = workScheme.expenseCategories.first(where: { $0.id == "work.trip" }) ?? LedgerCategory
+            .defaultCategory(for: .expense)
+        let software = workScheme.expenseCategories.first(where: { $0.id == "work.software" }) ?? LedgerCategory
+            .defaultCategory(for: .expense)
+        let project = workScheme.incomeCategories.first(where: { $0.id == "work.project" }) ?? LedgerCategory
+            .defaultCategory(for: .income)
+
+        let bookBudgets = [
+            LedgerBookBudget(bookID: totalBook.id, monthlyLimit: 3600),
+            LedgerBookBudget(bookID: workBook.id, monthlyLimit: 2400)
+        ]
+
+        let categoryBudgets = [
+            LedgerCategoryBudget(bookID: totalBook.id, categoryID: meal.id, monthlyLimit: 900),
+            LedgerCategoryBudget(bookID: totalBook.id, categoryID: shopping.id, monthlyLimit: 1100),
+            LedgerCategoryBudget(bookID: totalBook.id, categoryID: transit.id, monthlyLimit: 480),
+            LedgerCategoryBudget(bookID: workBook.id, categoryID: trip.id, monthlyLimit: 1400),
+            LedgerCategoryBudget(bookID: workBook.id, categoryID: software.id, monthlyLimit: 500)
+        ]
 
         let entries = [
             LedgerEntry(
@@ -946,8 +1323,7 @@ final class LedgerStore: ObservableObject {
                 category: meal,
                 paymentMethod: "微信余额",
                 note: "楼下面馆",
-                date: calendar.date(byAdding: .day, value: -1, to: now) ?? now
-            ),
+                date: calendar.date(byAdding: .day, value: -1, to: now) ?? now),
             LedgerEntry(
                 bookID: totalBook.id,
                 title: "地铁通勤",
@@ -956,8 +1332,7 @@ final class LedgerStore: ObservableObject {
                 category: transit,
                 paymentMethod: "支付宝",
                 note: "",
-                date: calendar.date(byAdding: .day, value: -2, to: now) ?? now
-            ),
+                date: calendar.date(byAdding: .day, value: -2, to: now) ?? now),
             LedgerEntry(
                 bookID: totalBook.id,
                 title: "买菜补货",
@@ -966,8 +1341,7 @@ final class LedgerStore: ObservableObject {
                 category: shopping,
                 paymentMethod: "招商储蓄卡",
                 note: "",
-                date: calendar.date(byAdding: .day, value: -3, to: now) ?? now
-            ),
+                date: calendar.date(byAdding: .day, value: -3, to: now) ?? now),
             LedgerEntry(
                 bookID: totalBook.id,
                 title: "体检报销差额",
@@ -976,8 +1350,7 @@ final class LedgerStore: ObservableObject {
                 category: health,
                 paymentMethod: "信用卡",
                 note: "",
-                date: calendar.date(byAdding: .day, value: -6, to: now) ?? now
-            ),
+                date: calendar.date(byAdding: .day, value: -6, to: now) ?? now),
             LedgerEntry(
                 bookID: totalBook.id,
                 title: "四月工资",
@@ -986,8 +1359,7 @@ final class LedgerStore: ObservableObject {
                 category: salary,
                 paymentMethod: "招商储蓄卡",
                 note: "",
-                date: calendar.date(byAdding: .day, value: -4, to: now) ?? now
-            ),
+                date: calendar.date(byAdding: .day, value: -4, to: now) ?? now),
             LedgerEntry(
                 bookID: totalBook.id,
                 title: "退货退款",
@@ -996,8 +1368,7 @@ final class LedgerStore: ObservableObject {
                 category: refund,
                 paymentMethod: "支付宝",
                 note: "",
-                date: calendar.date(byAdding: .day, value: -7, to: now) ?? now
-            ),
+                date: calendar.date(byAdding: .day, value: -7, to: now) ?? now),
             LedgerEntry(
                 bookID: workBook.id,
                 title: "上海差旅",
@@ -1006,8 +1377,7 @@ final class LedgerStore: ObservableObject {
                 category: trip,
                 paymentMethod: "信用卡",
                 note: "来回高铁",
-                date: calendar.date(byAdding: .day, value: -5, to: now) ?? now
-            ),
+                date: calendar.date(byAdding: .day, value: -5, to: now) ?? now),
             LedgerEntry(
                 bookID: workBook.id,
                 title: "设计工具订阅",
@@ -1016,8 +1386,7 @@ final class LedgerStore: ObservableObject {
                 category: software,
                 paymentMethod: "支付宝",
                 note: "",
-                date: calendar.date(byAdding: .day, value: -9, to: now) ?? now
-            ),
+                date: calendar.date(byAdding: .day, value: -9, to: now) ?? now),
             LedgerEntry(
                 bookID: workBook.id,
                 title: "项目首款",
@@ -1026,18 +1395,17 @@ final class LedgerStore: ObservableObject {
                 category: project,
                 paymentMethod: "招商储蓄卡",
                 note: "",
-                date: calendar.date(byAdding: .day, value: -10, to: now) ?? now
-            )
+                date: calendar.date(byAdding: .day, value: -10, to: now) ?? now)
         ]
 
         return SeedState(
-            budgetLimit: 3600,
+            bookBudgets: bookBudgets,
+            categoryBudgets: categoryBudgets,
             books: [totalBook, workBook],
             selectedBookID: totalBook.id,
             accounts: accounts,
             categorySchemes: schemes,
             selectedCategorySchemeID: defaultScheme.id,
-            entries: entries
-        )
+            entries: entries)
     }
 }
