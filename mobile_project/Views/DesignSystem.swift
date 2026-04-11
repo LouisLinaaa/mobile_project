@@ -23,8 +23,7 @@ struct LedgerCardModifier: ViewModifier {
             .background(
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
                     .fill(.white)
-                    .shadow(color: Color.black.opacity(0.04), radius: 18, x: 0, y: 10)
-            )
+                    .shadow(color: Color.black.opacity(0.04), radius: 18, x: 0, y: 10))
     }
 }
 

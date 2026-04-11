@@ -54,8 +54,7 @@ struct BudgetManagementView: View {
             return BudgetCalendarDay(
                 date: dayStart,
                 recommendedBudget: recommendedBudget,
-                expense: dayExpense
-            )
+                expense: dayExpense)
         }
     }
 
@@ -109,10 +108,8 @@ struct BudgetManagementView: View {
             LinearGradient(
                 colors: [Color.ledgerAccentSoft.opacity(0.32), Color.ledgerCanvas],
                 startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
-        )
+                endPoint: .bottom)
+                .ignoresSafeArea())
         .navigationTitle("预算管理")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -147,9 +144,8 @@ struct BudgetManagementView: View {
                 allowsRemoval: store.budgetLimit != nil,
                 onSave: { amount in
                     store.setBudgetLimit(amount)
-                }
-            )
-            .presentationDetents([.height(320)])
+                })
+                .presentationDetents([.height(320)])
         }
         .sheet(item: $categoryBudgetDraft) { draft in
             CategoryBudgetEditorSheet(
@@ -162,12 +158,11 @@ struct BudgetManagementView: View {
                     if let budget = store.categoryBudget(for: draft.category.id) {
                         store.removeCategoryBudget(budget)
                     }
-                } : nil
-            )
-            .presentationDetents([.height(360)])
+                } : nil)
+                .presentationDetents([.height(360)])
         }
         .alert("AI 预算功能预留", isPresented: $isAIBudgetAlertPresented) {
-            Button("知道了", role: .cancel) { }
+            Button("知道了", role: .cancel) {}
         } message: {
             Text("入口和页面节奏已经预留好了，后续我们接入 AI 预算建议和智能分配时，可以直接沿用这里的结构。")
         }
@@ -201,9 +196,7 @@ struct BudgetManagementView: View {
                         LinearGradient(
                             colors: [Color.ledgerLavender, Color.ledgerAccent],
                             startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                            endPoint: .trailing))
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(
@@ -212,11 +205,8 @@ struct BudgetManagementView: View {
                                 LinearGradient(
                                     colors: [Color.ledgerLavender, Color.ledgerAccent],
                                     startPoint: .leading,
-                                    endPoint: .trailing
-                                ),
-                                lineWidth: 1.6
-                            )
-                    )
+                                    endPoint: .trailing),
+                                lineWidth: 1.6))
                 }
                 .buttonStyle(.plain)
             }
@@ -247,35 +237,30 @@ struct BudgetManagementView: View {
                     if store.currentBudgetOverspent > 0 {
                         BudgetStatusBadge(
                             title: "已超支",
-                            tint: .ledgerExpense
-                        )
+                            tint: .ledgerExpense)
                     } else if store.budgetLimit != nil {
                         BudgetStatusBadge(
                             title: "正常",
-                            tint: .ledgerIncome
-                        )
+                            tint: .ledgerIncome)
                     }
                 }
             }
 
             BudgetLinearProgressView(
                 progress: store.budgetProgress,
-                tint: store.currentBudgetOverspent > 0 ? .ledgerExpense : .ledgerAccent
-            )
-            .frame(height: 14)
+                tint: store.currentBudgetOverspent > 0 ? .ledgerExpense : .ledgerAccent)
+                .frame(height: 14)
 
             HStack {
                 summaryMetric(
                     title: "已用",
-                    value: displayAmount(store.currentMonthExpense, fallback: "¥--")
-                )
+                    value: displayAmount(store.currentMonthExpense, fallback: "¥--"))
 
                 Spacer()
 
                 summaryMetric(
                     title: "剩余",
-                    value: displayAmount(store.currentBudgetRemaining, fallback: "¥--")
-                )
+                    value: displayAmount(store.currentBudgetRemaining, fallback: "¥--"))
             }
 
             Rectangle()
@@ -284,8 +269,7 @@ struct BudgetManagementView: View {
                 .overlay(
                     Rectangle()
                         .stroke(style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                        .foregroundStyle(Color.ledgerAccent.opacity(0.22))
-                )
+                        .foregroundStyle(Color.ledgerAccent.opacity(0.22)))
 
             HStack(alignment: .firstTextBaseline) {
                 Text("今日可用预算")
@@ -314,11 +298,8 @@ struct BudgetManagementView: View {
                     LinearGradient(
                         colors: [Color.white, Color.ledgerCard],
                         startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .shadow(color: Color.ledgerAccent.opacity(0.08), radius: 24, x: 0, y: 14)
-        )
+                        endPoint: .bottomTrailing))
+                .shadow(color: Color.ledgerAccent.opacity(0.08), radius: 24, x: 0, y: 14))
     }
 
     private var dynamicDailyBudgetSection: some View {
@@ -340,8 +321,7 @@ struct BudgetManagementView: View {
                 PlaceholderBudgetCard(
                     icon: "calendar.badge.exclamationmark",
                     title: "先设置月预算",
-                    detail: "设置好月预算后，这里会按当前账本自动生成每日建议预算，并结合已消费情况动态调整。"
-                )
+                    detail: "设置好月预算后，这里会按当前账本自动生成每日建议预算，并结合已消费情况动态调整。")
             } else {
                 VStack(spacing: 14) {
                     HStack {
@@ -405,8 +385,7 @@ struct BudgetManagementView: View {
                 PlaceholderBudgetCard(
                     icon: "square.grid.2x2",
                     title: "还没有分类预算",
-                    detail: "可以先给餐饮、交通、购物这些高频分类设置预算，页面会自动显示已用、剩余和超支状态。"
-                )
+                    detail: "可以先给餐饮、交通、购物这些高频分类设置预算，页面会自动显示已用、剩余和超支状态。")
             } else {
                 VStack(spacing: 12) {
                     ForEach(store.currentBookCategoryBudgetSummaries) { summary in
@@ -453,12 +432,10 @@ struct BudgetManagementView: View {
         .aspectRatio(1, contentMode: .fit)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(dayBackgroundColor(isToday: isToday, isPast: isPast))
-        )
+                .fill(dayBackgroundColor(isToday: isToday, isPast: isPast)))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(isToday ? Color.ledgerAccent.opacity(0.42) : Color.clear, lineWidth: 1.4)
-        )
+                .stroke(isToday ? Color.ledgerAccent.opacity(0.42) : Color.clear, lineWidth: 1.4))
     }
 
     private func categoryBudgetCard(_ summary: LedgerBudgetCategorySummary) -> some View {
@@ -479,7 +456,8 @@ struct BudgetManagementView: View {
                         .font(.system(size: 18, weight: .bold, design: .rounded))
                         .foregroundStyle(Color.ledgerText)
 
-                    Text("\(displayAmount(summary.spent, fallback: "¥--")) / \(displayAmount(summary.budget.monthlyLimit, fallback: "¥--"))")
+                    Text(
+                        "\(displayAmount(summary.spent, fallback: "¥--")) / \(displayAmount(summary.budget.monthlyLimit, fallback: "¥--"))")
                         .font(.system(size: 13, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.ledgerMuted)
                         .lineLimit(1)
@@ -491,8 +469,7 @@ struct BudgetManagementView: View {
                     categoryBudgetDraft = CategoryBudgetDraft(
                         category: summary.category,
                         amountText: BudgetViewFormatters.editingAmount(summary.budget.monthlyLimit),
-                        isEditing: true
-                    )
+                        isEditing: true)
                 } label: {
                     Text("调整")
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
@@ -507,12 +484,13 @@ struct BudgetManagementView: View {
 
             BudgetLinearProgressView(
                 progress: summary.progress,
-                tint: summary.overspent > 0 ? .ledgerExpense : summary.category.tint
-            )
-            .frame(height: 12)
+                tint: summary.overspent > 0 ? .ledgerExpense : summary.category.tint)
+                .frame(height: 12)
 
             HStack {
-                Text(summary.overspent > 0 ? "已超 \(displayAmount(summary.overspent, fallback: "¥--"))" : "剩余 \(displayAmount(summary.remaining, fallback: "¥--"))")
+                Text(summary
+                    .overspent > 0 ? "已超 \(displayAmount(summary.overspent, fallback: "¥--"))" :
+                    "剩余 \(displayAmount(summary.remaining, fallback: "¥--"))")
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(summary.overspent > 0 ? Color.ledgerExpense : Color.ledgerMuted)
 
@@ -571,8 +549,7 @@ struct BudgetManagementView: View {
         categoryBudgetDraft = CategoryBudgetDraft(
             category: category,
             amountText: "",
-            isEditing: false
-        )
+            isEditing: false)
     }
 }
 
@@ -652,8 +629,7 @@ private struct BudgetLegendItem: View {
                 .frame(width: 10, height: 10)
                 .overlay(
                     Circle()
-                        .stroke(Color.ledgerDivider, lineWidth: 0.8)
-                )
+                        .stroke(Color.ledgerDivider, lineWidth: 0.8))
 
             Text(text)
                 .font(.system(size: 12, weight: .medium, design: .rounded))
@@ -677,9 +653,7 @@ private struct BudgetLinearProgressView: View {
                         LinearGradient(
                             colors: [tint, tint.opacity(0.65)],
                             startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                            endPoint: .trailing))
                     .frame(width: proxy.size.width * min(max(progress, 0), 1))
             }
         }
@@ -702,8 +676,8 @@ private struct BudgetAmountEditorSheet: View {
         subtitle: String,
         initialAmount: Double?,
         allowsRemoval: Bool,
-        onSave: @escaping (Double?) -> Void
-    ) {
+        onSave: @escaping (Double?) -> Void)
+    {
         self.title = title
         self.subtitle = subtitle
         self.initialAmount = initialAmount
@@ -771,8 +745,10 @@ private struct BudgetAmountEditorSheet: View {
                             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     }
                     .buttonStyle(.plain)
-                    .disabled(!amountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && parsedAmount == nil)
-                    .opacity(!amountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && parsedAmount == nil ? 0.5 : 1)
+                    .disabled(!amountText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        .isEmpty && parsedAmount == nil)
+                    .opacity(!amountText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        .isEmpty && parsedAmount == nil ? 0.5 : 1)
                 }
             }
             .padding(22)
@@ -804,8 +780,8 @@ private struct CategoryBudgetEditorSheet: View {
         draft: CategoryBudgetDraft,
         categories: [LedgerCategory],
         onSave: @escaping (String, Double) -> Void,
-        onDelete: (() -> Void)? = nil
-    ) {
+        onDelete: (() -> Void)? = nil)
+    {
         self.draft = draft
         self.categories = categories
         self.onSave = onSave

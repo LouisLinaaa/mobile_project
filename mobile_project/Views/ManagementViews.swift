@@ -94,7 +94,10 @@ struct StatisticsView: View {
         store.currentBookEntries.filter { entry in
             switch range {
             case .week:
-                let start = Calendar.current.date(byAdding: .day, value: -6, to: Calendar.current.startOfDay(for: Date())) ?? Date()
+                let start = Calendar.current.date(
+                    byAdding: .day,
+                    value: -6,
+                    to: Calendar.current.startOfDay(for: Date())) ?? Date()
                 return entry.date >= start
             case .month:
                 return store.isInCurrentStatisticsMonth(entry.date)
@@ -188,10 +191,8 @@ struct StatisticsView: View {
             LinearGradient(
                 colors: [Color.ledgerAccentSoft.opacity(0.5), Color.ledgerCanvas],
                 startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
-        )
+                endPoint: .bottom)
+                .ignoresSafeArea())
         .navigationTitle("图表统计")
     }
 
@@ -248,11 +249,8 @@ struct StatisticsView: View {
                     LinearGradient(
                         colors: [Color.ledgerAccent, Color.ledgerLavender],
                         startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .shadow(color: Color.ledgerAccent.opacity(0.22), radius: 24, x: 0, y: 18)
-        )
+                        endPoint: .bottomTrailing))
+                .shadow(color: Color.ledgerAccent.opacity(0.22), radius: 24, x: 0, y: 18))
     }
 
     private var trendCard: some View {
@@ -277,17 +275,15 @@ struct StatisticsView: View {
                 EmptyFeatureState(
                     icon: "chart.bar.xaxis",
                     title: "还没有可统计的数据",
-                    detail: "先记几笔账，再回来看看趋势变化。"
-                )
-                .frame(height: 220)
+                    detail: "先记几笔账，再回来看看趋势变化。")
+                    .frame(height: 220)
             } else {
                 Chart(trendPoints) { point in
                     BarMark(
                         x: .value("日期", point.date, unit: .day),
-                        y: .value("金额", point.amount)
-                    )
-                    .foregroundStyle(chartColor.gradient)
-                    .cornerRadius(6)
+                        y: .value("金额", point.amount))
+                        .foregroundStyle(chartColor.gradient)
+                        .cornerRadius(6)
                 }
                 .frame(height: 220)
                 .chartYAxis {
@@ -318,8 +314,7 @@ struct StatisticsView: View {
                 EmptyFeatureState(
                     icon: "circle.dotted",
                     title: "暂无分类数据",
-                    detail: "等你记上几笔以后，这里会显示主要分类占比。"
-                )
+                    detail: "等你记上几笔以后，这里会显示主要分类占比。")
             } else {
                 VStack(spacing: 14) {
                     ForEach(categoryRanks.prefix(6)) { item in
@@ -366,8 +361,7 @@ struct StatisticsView: View {
                 EmptyFeatureState(
                     icon: "list.number",
                     title: "暂无排行",
-                    detail: "这部分会帮你快速看到金额最大的记录。"
-                )
+                    detail: "这部分会帮你快速看到金额最大的记录。")
             } else {
                 VStack(spacing: 12) {
                     ForEach(Array(topTransactions.enumerated()), id: \.element.id) { index, entry in
@@ -428,9 +422,8 @@ struct AssetManagementView: View {
                     EmptyFeatureState(
                         icon: "wallet.pass",
                         title: "还没有账户",
-                        detail: "先添加储蓄卡、现金或负债账户，资产页会自动汇总。"
-                    )
-                    .padding(.top, 40)
+                        detail: "先添加储蓄卡、现金或负债账户，资产页会自动汇总。")
+                        .padding(.top, 40)
                 }
             }
             .padding(20)
@@ -476,8 +469,16 @@ struct AssetManagementView: View {
                 .foregroundStyle(Color.ledgerText)
 
             HStack(spacing: 12) {
-                MetricBlock(title: "资产", value: store.totalAssets, valueColor: Color.ledgerText, background: Color.white.opacity(0.45))
-                MetricBlock(title: "负债", value: store.totalLiabilities, valueColor: Color.ledgerText, background: Color.white.opacity(0.45))
+                MetricBlock(
+                    title: "资产",
+                    value: store.totalAssets,
+                    valueColor: Color.ledgerText,
+                    background: Color.white.opacity(0.45))
+                MetricBlock(
+                    title: "负债",
+                    value: store.totalLiabilities,
+                    valueColor: Color.ledgerText,
+                    background: Color.white.opacity(0.45))
             }
         }
         .padding(22)
@@ -487,11 +488,8 @@ struct AssetManagementView: View {
                     LinearGradient(
                         colors: [Color(red: 1.00, green: 0.96, blue: 0.80), Color(red: 1.00, green: 0.90, blue: 0.55)],
                         startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .shadow(color: Color.ledgerGold.opacity(0.18), radius: 22, x: 0, y: 14)
-        )
+                        endPoint: .bottomTrailing))
+                .shadow(color: Color.ledgerGold.opacity(0.18), radius: 22, x: 0, y: 14))
     }
 
     private func accountSection(group: LedgerAccountGroup, accounts: [LedgerAccount]) -> some View {
@@ -604,7 +602,8 @@ struct BookManagementView: View {
                                     }
                                 }
 
-                                Text("\(LedgerFormatters.bookDate(book.createdAt)) 创建 · \(store.bookEntryCount(book)) 笔记录")
+                                Text(
+                                    "\(LedgerFormatters.bookDate(book.createdAt)) 创建 · \(store.bookEntryCount(book)) 笔记录")
                                     .font(.system(size: 14, weight: .medium, design: .rounded))
                                     .foregroundStyle(Color.ledgerMuted)
 
@@ -677,7 +676,8 @@ struct BookManagementView: View {
                         .font(.system(size: 24, weight: .black, design: .rounded))
                         .foregroundStyle(Color.ledgerText)
 
-                    Text("\(store.bookEntryCount(store.currentBook)) 笔记录 · 本月收入 \(LedgerFormatters.currency(store.bookMonthlyIncome(store.currentBook)))")
+                    Text(
+                        "\(store.bookEntryCount(store.currentBook)) 笔记录 · 本月收入 \(LedgerFormatters.currency(store.bookMonthlyIncome(store.currentBook)))")
                         .font(.system(size: 14, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.ledgerMuted)
                 }
@@ -690,10 +690,7 @@ struct BookManagementView: View {
                     LinearGradient(
                         colors: [Color.white, store.currentBook.tintStyle.color.opacity(0.10)],
                         startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        )
+                        endPoint: .bottomTrailing)))
     }
 }
 
@@ -740,8 +737,14 @@ struct CategoryManagementView: View {
                             }
 
                             HStack(spacing: 18) {
-                                SchemeMetric(title: "支出", value: "\(scheme.expenseCategories.count) 类", accent: .ledgerAccent)
-                                SchemeMetric(title: "收入", value: "\(scheme.incomeCategories.count) 类", accent: .ledgerGold)
+                                SchemeMetric(
+                                    title: "支出",
+                                    value: "\(scheme.expenseCategories.count) 类",
+                                    accent: .ledgerAccent)
+                                SchemeMetric(
+                                    title: "收入",
+                                    value: "\(scheme.incomeCategories.count) 类",
+                                    accent: .ledgerGold)
                             }
 
                             HStack(spacing: 10) {
@@ -868,7 +871,10 @@ private struct CategorySchemeDetailView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                                 .contextMenu {
                                     Button("删除分类", role: .destructive) {
-                                        store.removeCategory(from: schemeID, categoryID: category.id, kind: selectedKind)
+                                        store.removeCategory(
+                                            from: schemeID,
+                                            categoryID: category.id,
+                                            kind: selectedKind)
                                     }
                                 }
                             }
@@ -991,7 +997,8 @@ private struct AccountEditorSheet: View {
                                     } label: {
                                         VStack(spacing: 10) {
                                             Circle()
-                                                .fill(template.tintStyle.color.opacity(selectedTemplateID == template.id ? 0.22 : 0.12))
+                                                .fill(template.tintStyle.color
+                                                    .opacity(selectedTemplateID == template.id ? 0.22 : 0.12))
                                                 .frame(width: 56, height: 56)
                                                 .overlay {
                                                     Image(systemName: template.icon)
@@ -1007,12 +1014,14 @@ private struct AccountEditorSheet: View {
                                         .padding(.vertical, 12)
                                         .background(
                                             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                                .fill(selectedTemplateID == template.id ? template.tintStyle.color.opacity(0.08) : Color.white)
+                                                .fill(selectedTemplateID == template.id ? template.tintStyle.color
+                                                    .opacity(0.08) : Color.white)
                                                 .overlay(
                                                     RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                                        .stroke(selectedTemplateID == template.id ? template.tintStyle.color : Color.clear, lineWidth: 1.4)
-                                                )
-                                        )
+                                                        .stroke(
+                                                            selectedTemplateID == template.id ? template.tintStyle
+                                                                .color : Color.clear,
+                                                            lineWidth: 1.4)))
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -1037,7 +1046,11 @@ private struct AccountEditorSheet: View {
                         let balance = Double(balanceText.replacingOccurrences(of: ",", with: ".")) ?? 0
 
                         if let account {
-                            store.updateAccount(account, template: selectedTemplate, customName: accountName, balance: balance)
+                            store.updateAccount(
+                                account,
+                                template: selectedTemplate,
+                                customName: accountName,
+                                balance: balance)
                         } else {
                             store.addAccount(template: selectedTemplate, customName: accountName, balance: balance)
                         }
@@ -1207,7 +1220,9 @@ private struct AddCategorySheet: View {
                                         }
                                         .overlay {
                                             Circle()
-                                                .stroke(selectedIcon == icon ? selectedTint.color : Color.clear, lineWidth: 2)
+                                                .stroke(
+                                                    selectedIcon == icon ? selectedTint.color : Color.clear,
+                                                    lineWidth: 2)
                                         }
                                 }
                                 .buttonStyle(.plain)
@@ -1235,7 +1250,9 @@ private struct AddCategorySheet: View {
                                         }
                                         .overlay {
                                             Circle()
-                                                .stroke(selectedTint == tint ? Color.ledgerText : Color.clear, lineWidth: 2)
+                                                .stroke(
+                                                    selectedTint == tint ? Color.ledgerText : Color.clear,
+                                                    lineWidth: 2)
                                         }
                                 }
                                 .buttonStyle(.plain)
@@ -1262,8 +1279,7 @@ private struct AddCategorySheet: View {
                             kind: kind,
                             name: name,
                             icon: selectedIcon,
-                            tintStyle: selectedTint
-                        )
+                            tintStyle: selectedTint)
                         dismiss()
                     }
                     .fontWeight(.bold)
@@ -1389,10 +1405,8 @@ struct SettingsView: View {
             LinearGradient(
                 colors: [Color.ledgerAccentSoft.opacity(0.42), Color.ledgerCanvas],
                 startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
-        )
+                endPoint: .bottom)
+                .ignoresSafeArea())
         .navigationTitle("设置")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $isHelpPresented) {
@@ -1417,7 +1431,7 @@ struct SettingsView: View {
             Button("删除", role: .destructive) {
                 store.clearAllHistoryEntries()
             }
-            Button("取消", role: .cancel) { }
+            Button("取消", role: .cancel) {}
         } message: {
             Text("这会清空当前本地账单记录，但不会删除账本、账户和分类设置。")
         }
@@ -1427,8 +1441,8 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             SettingSelectRow(
                 title: "月统计起始日",
-                value: store.appSettings.monthStartDayLabel
-            ) {
+                value: store.appSettings.monthStartDayLabel)
+            {
                 ForEach(monthStartDayOptions, id: \.self) { day in
                     Button("每月\(day)日") {
                         store.setMonthStartDay(day)
@@ -1440,8 +1454,8 @@ struct SettingsView: View {
 
             SettingSelectRow(
                 title: "助手回复风格",
-                value: store.appSettings.assistantReplyStyle.title
-            ) {
+                value: store.appSettings.assistantReplyStyle.title)
+            {
                 ForEach(AssistantReplyStyle.allCases) { style in
                     Button(style.title) {
                         store.setAssistantReplyStyle(style)
@@ -1456,9 +1470,7 @@ struct SettingsView: View {
                 subtitle: "控制首页“一句话快速记账”卡片展示",
                 isOn: Binding(
                     get: { store.appSettings.showOfferRecommendations },
-                    set: { store.appSettings.showOfferRecommendations = $0 }
-                )
-            )
+                    set: { store.appSettings.showOfferRecommendations = $0 }))
         }
         .ledgerCard()
     }
@@ -1470,47 +1482,37 @@ struct SettingsView: View {
                 subtitle: "总开关会联动下方提醒项",
                 isOn: Binding(
                     get: { store.appSettings.pushEnabled },
-                    set: { store.setPushEnabled($0) }
-                )
-            )
-            .padding(.horizontal, SettingsLayout.rowHorizontalPadding)
-            .padding(.top, 16)
+                    set: { store.setPushEnabled($0) }))
+                .padding(.horizontal, SettingsLayout.rowHorizontalPadding)
+                .padding(.top, 16)
 
             VStack(spacing: 0) {
                 SettingCheckRow(
                     title: "每日记账",
                     isChecked: Binding(
                         get: { store.appSettings.pushDailyLedger },
-                        set: { store.setPushSubItem(dailyLedger: $0) }
-                    )
-                )
+                        set: { store.setPushSubItem(dailyLedger: $0) }))
                 Divider().padding(.leading, SettingsLayout.dividerLeading)
 
                 SettingCheckRow(
                     title: "预算提醒",
                     isChecked: Binding(
                         get: { store.appSettings.pushBudgetReminder },
-                        set: { store.setPushSubItem(budgetReminder: $0) }
-                    )
-                )
+                        set: { store.setPushSubItem(budgetReminder: $0) }))
                 Divider().padding(.leading, SettingsLayout.dividerLeading)
 
                 SettingCheckRow(
                     title: "功能推荐",
                     isChecked: Binding(
                         get: { store.appSettings.pushFeatureRecommendation },
-                        set: { store.setPushSubItem(featureRecommendation: $0) }
-                    )
-                )
+                        set: { store.setPushSubItem(featureRecommendation: $0) }))
                 Divider().padding(.leading, SettingsLayout.dividerLeading)
 
                 SettingCheckRow(
                     title: "账单回顾",
                     isChecked: Binding(
                         get: { store.appSettings.pushBillReview },
-                        set: { store.setPushSubItem(billReview: $0) }
-                    )
-                )
+                        set: { store.setPushSubItem(billReview: $0) }))
             }
             .background(Color.ledgerAccentMuted.opacity(0.4))
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -1568,8 +1570,7 @@ struct BackupSettingsView: View {
                 if !shouldShow {
                     statusMessage = nil
                 }
-            }
-        )
+            })
     }
 
     private var summary: LedgerStore.CloudBackupSummary? {
@@ -1615,10 +1616,8 @@ struct BackupSettingsView: View {
             LinearGradient(
                 colors: [Color.ledgerMint.opacity(0.18), Color.ledgerCanvas],
                 startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
-        )
+                endPoint: .bottom)
+                .ignoresSafeArea())
         .navigationTitle("数据备份")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -1633,12 +1632,12 @@ struct BackupSettingsView: View {
             Button("恢复", role: .destructive) {
                 statusMessage = store.restoreFromICloudBackupSnapshot() ? "云端备份已恢复到当前设备。" : "恢复失败，请确认 iCloud 中已有可用备份。"
             }
-            Button("取消", role: .cancel) { }
+            Button("取消", role: .cancel) {}
         } message: {
             Text("恢复会覆盖当前设备上的账本、账户、分类和设置内容。")
         }
         .alert("备份状态", isPresented: statusBinding) {
-            Button("知道了", role: .cancel) { }
+            Button("知道了", role: .cancel) {}
         } message: {
             Text(statusMessage ?? "")
         }
@@ -1671,7 +1670,8 @@ struct BackupSettingsView: View {
                     Circle()
                         .fill((store.isICloudBackupAvailable ? Color.ledgerMint : Color.ledgerCoral).opacity(0.18))
                         .frame(width: 52, height: 52)
-                    Image(systemName: store.isICloudBackupAvailable ? "checkmark.icloud.fill" : "exclamationmark.icloud.fill")
+                    Image(systemName: store
+                        .isICloudBackupAvailable ? "checkmark.icloud.fill" : "exclamationmark.icloud.fill")
                         .font(.system(size: 23, weight: .semibold))
                         .foregroundStyle(store.isICloudBackupAvailable ? Color.ledgerMint : Color.ledgerCoral)
                 }
@@ -1691,8 +1691,8 @@ struct BackupSettingsView: View {
                 BackupActionButton(
                     title: "立即备份",
                     systemImage: "arrow.up.circle.fill",
-                    tint: .ledgerAccent
-                ) {
+                    tint: .ledgerAccent)
+                {
                     statusMessage = store.createICloudBackupSnapshot() ? "已将当前数据写入 iCloud 备份。" : "备份失败，请稍后重试。"
                 }
                 .disabled(!store.isICloudBackupAvailable)
@@ -1700,8 +1700,8 @@ struct BackupSettingsView: View {
                 BackupActionButton(
                     title: "从云端恢复",
                     systemImage: "arrow.down.circle.fill",
-                    tint: .ledgerMint
-                ) {
+                    tint: .ledgerMint)
+                {
                     isRestoreAlertPresented = true
                 }
                 .disabled(summary == nil)
@@ -1732,7 +1732,8 @@ struct BackupSettingsView: View {
                 Text(summary.generatedAt.formatted(date: .complete, time: .shortened))
                     .font(.system(size: 24, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.ledgerText)
-                Text("本次备份包含 \(summary.totalEntryCount) 条账单、\(summary.totalBookCount) 个账本、\(summary.totalAccountCount) 个账户。")
+                Text(
+                    "本次备份包含 \(summary.totalEntryCount) 条账单、\(summary.totalBookCount) 个账本、\(summary.totalAccountCount) 个账户。")
                     .font(.system(size: 14, weight: .medium, design: .rounded))
                     .foregroundStyle(Color.ledgerMuted)
             }
@@ -1802,9 +1803,7 @@ struct PrivacySecurityView: View {
                         subtitle: "隐藏金额和支付方式",
                         isOn: Binding(
                             get: { store.appSettings.hideSensitiveInfo },
-                            set: { store.appSettings.hideSensitiveInfo = $0 }
-                        )
-                    )
+                            set: { store.appSettings.hideSensitiveInfo = $0 }))
                     Divider().padding(.leading, SettingsLayout.dividerLeading)
 
                     SettingToggleRow(
@@ -1812,9 +1811,7 @@ struct PrivacySecurityView: View {
                         subtitle: "用于自动记账回看截图",
                         isOn: Binding(
                             get: { store.appSettings.showRecordImages },
-                            set: { store.appSettings.showRecordImages = $0 }
-                        )
-                    )
+                            set: { store.appSettings.showRecordImages = $0 }))
                     Divider().padding(.leading, SettingsLayout.dividerLeading)
 
                     SettingToggleRow(
@@ -1822,9 +1819,7 @@ struct PrivacySecurityView: View {
                         subtitle: "允许在账单中展示地点字段",
                         isOn: Binding(
                             get: { store.appSettings.showLocation },
-                            set: { store.appSettings.showLocation = $0 }
-                        )
-                    )
+                            set: { store.appSettings.showLocation = $0 }))
                 }
                 .ledgerCard()
             }
@@ -1971,8 +1966,7 @@ private struct BackupActionButton: View {
             .padding(.vertical, 14)
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(tint)
-            )
+                    .fill(tint))
         }
         .buttonStyle(.plain)
         .opacity(1)
@@ -2010,12 +2004,10 @@ private struct HelpFeedbackView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     infoCard(
                         title: "常见问题",
-                        message: "1. 你可以在设置中手动执行 iCloud 备份与恢复。\n2. 恢复云端备份会覆盖当前设备的数据。\n3. 月统计起始日会影响预算与图表。"
-                    )
+                        message: "1. 你可以在设置中手动执行 iCloud 备份与恢复。\n2. 恢复云端备份会覆盖当前设备的数据。\n3. 月统计起始日会影响预算与图表。")
                     infoCard(
                         title: "反馈方式",
-                        message: "你可以把问题截图、复现步骤和系统版本整理后提交给产品团队。"
-                    )
+                        message: "你可以把问题截图、复现步骤和系统版本整理后提交给产品团队。")
                 }
                 .padding(20)
             }

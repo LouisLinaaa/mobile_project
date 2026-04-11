@@ -99,8 +99,8 @@ struct LedgerBook: Identifiable, Hashable, Codable {
         note: String,
         createdAt: Date,
         icon: String,
-        tintStyle: LedgerTintStyle
-    ) {
+        tintStyle: LedgerTintStyle)
+    {
         self.id = id
         self.name = name
         self.note = note
@@ -198,8 +198,8 @@ struct LedgerAccount: Identifiable, Hashable, Codable {
         icon: String,
         tintStyle: LedgerTintStyle,
         group: LedgerAccountGroup,
-        balance: Double
-    ) {
+        balance: Double)
+    {
         self.id = id
         self.templateID = templateID
         self.name = name
@@ -224,8 +224,8 @@ struct LedgerCategoryScheme: Identifiable, Hashable, Codable {
         name: String,
         note: String,
         expenseCategories: [LedgerCategory],
-        incomeCategories: [LedgerCategory]
-    ) {
+        incomeCategories: [LedgerCategory])
+    {
         self.id = id
         self.name = name
         self.note = note
@@ -254,8 +254,8 @@ struct LedgerEntry: Identifiable, Codable {
         category: LedgerCategory,
         paymentMethod: String,
         note: String,
-        date: Date
-    ) {
+        date: Date)
+    {
         self.id = id
         self.bookID = bookID
         self.title = title
@@ -278,8 +278,8 @@ struct LedgerBookBudget: Identifiable, Hashable, Codable {
         id: UUID = UUID(),
         bookID: UUID,
         monthlyLimit: Double,
-        createdAt: Date = Date()
-    ) {
+        createdAt: Date = Date())
+    {
         self.id = id
         self.bookID = bookID
         self.monthlyLimit = monthlyLimit
@@ -299,8 +299,8 @@ struct LedgerCategoryBudget: Identifiable, Hashable, Codable {
         bookID: UUID,
         categoryID: String,
         monthlyLimit: Double,
-        createdAt: Date = Date()
-    ) {
+        createdAt: Date = Date())
+    {
         self.id = id
         self.bookID = bookID
         self.categoryID = categoryID
@@ -397,7 +397,7 @@ struct AppSettings: Codable, Equatable {
     var pushFeatureRecommendation = true
     var pushBillReview = true
 
-    init() { }
+    init() {}
 
     var monthStartDayLabel: String {
         "每月\(monthStartDay)日"
@@ -421,7 +421,8 @@ struct AppSettings: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let decodedMonthStartDay = try container.decodeIfPresent(Int.self, forKey: .monthStartDay) ?? 1
         monthStartDay = min(max(decodedMonthStartDay, 1), 28)
-        assistantReplyStyle = try container.decodeIfPresent(AssistantReplyStyle.self, forKey: .assistantReplyStyle) ?? .balanced
+        assistantReplyStyle = try container
+            .decodeIfPresent(AssistantReplyStyle.self, forKey: .assistantReplyStyle) ?? .balanced
         showRecordImages = try container.decodeIfPresent(Bool.self, forKey: .showRecordImages) ?? true
         showLocation = try container.decodeIfPresent(Bool.self, forKey: .showLocation) ?? true
         showOfferRecommendations = try container.decodeIfPresent(Bool.self, forKey: .showOfferRecommendations) ?? true
@@ -436,16 +437,36 @@ struct AppSettings: Codable, Equatable {
 
 extension LedgerCategory {
     static let expenseCategories: [LedgerCategory] = [
-        LedgerCategory(id: "expense.meal", name: "餐饮", icon: "fork.knife.circle.fill", tintStyle: .expense, kind: .expense),
+        LedgerCategory(
+            id: "expense.meal",
+            name: "餐饮",
+            icon: "fork.knife.circle.fill",
+            tintStyle: .expense,
+            kind: .expense),
         LedgerCategory(id: "expense.shopping", name: "购物", icon: "bag.fill", tintStyle: .gold, kind: .expense),
         LedgerCategory(id: "expense.transit", name: "交通", icon: "car.fill", tintStyle: .accent, kind: .expense),
         LedgerCategory(id: "expense.housing", name: "住房", icon: "house.fill", tintStyle: .coral, kind: .expense),
-        LedgerCategory(id: "expense.entertainment", name: "休闲娱乐", icon: "gamecontroller.fill", tintStyle: .lavender, kind: .expense),
+        LedgerCategory(
+            id: "expense.entertainment",
+            name: "休闲娱乐",
+            icon: "gamecontroller.fill",
+            tintStyle: .lavender,
+            kind: .expense),
         LedgerCategory(id: "expense.health", name: "医疗健康", icon: "cross.case.fill", tintStyle: .mint, kind: .expense),
         LedgerCategory(id: "expense.study", name: "学习办公", icon: "book.fill", tintStyle: .accent, kind: .expense),
         LedgerCategory(id: "expense.pet", name: "宠物", icon: "pawprint.fill", tintStyle: .gold, kind: .expense),
-        LedgerCategory(id: "expense.family", name: "母婴家庭", icon: "figure.and.child.holdinghands", tintStyle: .mint, kind: .expense),
-        LedgerCategory(id: "expense.transfer", name: "资金往来", icon: "arrow.left.arrow.right.circle.fill", tintStyle: .lavender, kind: .expense),
+        LedgerCategory(
+            id: "expense.family",
+            name: "母婴家庭",
+            icon: "figure.and.child.holdinghands",
+            tintStyle: .mint,
+            kind: .expense),
+        LedgerCategory(
+            id: "expense.transfer",
+            name: "资金往来",
+            icon: "arrow.left.arrow.right.circle.fill",
+            tintStyle: .lavender,
+            kind: .expense),
         LedgerCategory(id: "expense.insurance", name: "保险理财", icon: "shield.fill", tintStyle: .coral, kind: .expense),
         LedgerCategory(id: "expense.other", name: "其他支出", icon: "shippingbox.fill", tintStyle: .expense, kind: .expense)
     ]
@@ -454,8 +475,18 @@ extension LedgerCategory {
         LedgerCategory(id: "income.salary", name: "工资", icon: "banknote.fill", tintStyle: .income, kind: .income),
         LedgerCategory(id: "income.side", name: "副业", icon: "briefcase.fill", tintStyle: .accent, kind: .income),
         LedgerCategory(id: "income.bonus", name: "奖金", icon: "sparkles", tintStyle: .gold, kind: .income),
-        LedgerCategory(id: "income.investment", name: "理财收益", icon: "chart.line.uptrend.xyaxis", tintStyle: .mint, kind: .income),
-        LedgerCategory(id: "income.refund", name: "退款", icon: "arrow.uturn.backward.circle.fill", tintStyle: .lavender, kind: .income),
+        LedgerCategory(
+            id: "income.investment",
+            name: "理财收益",
+            icon: "chart.line.uptrend.xyaxis",
+            tintStyle: .mint,
+            kind: .income),
+        LedgerCategory(
+            id: "income.refund",
+            name: "退款",
+            icon: "arrow.uturn.backward.circle.fill",
+            tintStyle: .lavender,
+            kind: .income),
         LedgerCategory(id: "income.gift", name: "礼金", icon: "gift.fill", tintStyle: .coral, kind: .income)
     ]
 
@@ -468,7 +499,12 @@ extension LedgerCategory {
     ]
 
     static let workIncomeCategories: [LedgerCategory] = [
-        LedgerCategory(id: "work.project", name: "项目回款", icon: "shippingbox.circle.fill", tintStyle: .income, kind: .income),
+        LedgerCategory(
+            id: "work.project",
+            name: "项目回款",
+            icon: "shippingbox.circle.fill",
+            tintStyle: .income,
+            kind: .income),
         LedgerCategory(id: "work.consult", name: "咨询费", icon: "person.wave.2.fill", tintStyle: .accent, kind: .income),
         LedgerCategory(id: "work.reimburse", name: "报销", icon: "doc.text.fill", tintStyle: .gold, kind: .income)
     ]
@@ -481,16 +517,14 @@ extension LedgerCategory {
                 name: "支出",
                 icon: "minus.circle.fill",
                 tintStyle: .expense,
-                kind: .expense
-            )
+                kind: .expense)
         case .income:
             incomeCategories.first ?? LedgerCategory(
                 id: "income.fallback",
                 name: "收入",
                 icon: "plus.circle.fill",
                 tintStyle: .income,
-                kind: .income
-            )
+                kind: .income)
         }
     }
 }
@@ -501,14 +535,12 @@ extension LedgerCategoryScheme {
             name: "日常生活",
             note: "适合个人日常记账",
             expenseCategories: LedgerCategory.expenseCategories,
-            incomeCategories: LedgerCategory.incomeCategories
-        ),
+            incomeCategories: LedgerCategory.incomeCategories),
         LedgerCategoryScheme(
             name: "项目工作",
             note: "适合差旅、项目和办公支出",
             expenseCategories: LedgerCategory.workExpenseCategories,
-            incomeCategories: LedgerCategory.workIncomeCategories
-        )
+            incomeCategories: LedgerCategory.workIncomeCategories)
     ]
 }
 
@@ -518,22 +550,87 @@ extension LedgerAccountTemplate {
         LedgerAccountTemplate(id: "wechat", name: "微信", icon: "message.fill", tintStyle: .mint, group: .asset),
         LedgerAccountTemplate(id: "alipay", name: "支付宝", icon: "qrcode", tintStyle: .accent, group: .asset),
         LedgerAccountTemplate(id: "cash", name: "现金", icon: "banknote.fill", tintStyle: .gold, group: .asset),
-        LedgerAccountTemplate(id: "custom-asset", name: "自定义", icon: "ellipsis.circle.fill", tintStyle: .lavender, group: .asset),
-        LedgerAccountTemplate(id: "credit-card", name: "信用卡", icon: "creditcard.trianglebadge.exclamationmark", tintStyle: .coral, group: .credit),
-        LedgerAccountTemplate(id: "huabei", name: "花呗", icon: "circle.hexagongrid.fill", tintStyle: .accent, group: .credit),
+        LedgerAccountTemplate(
+            id: "custom-asset",
+            name: "自定义",
+            icon: "ellipsis.circle.fill",
+            tintStyle: .lavender,
+            group: .asset),
+        LedgerAccountTemplate(
+            id: "credit-card",
+            name: "信用卡",
+            icon: "creditcard.trianglebadge.exclamationmark",
+            tintStyle: .coral,
+            group: .credit),
+        LedgerAccountTemplate(
+            id: "huabei",
+            name: "花呗",
+            icon: "circle.hexagongrid.fill",
+            tintStyle: .accent,
+            group: .credit),
         LedgerAccountTemplate(id: "baitiao", name: "白条", icon: "doc.text.fill", tintStyle: .gold, group: .credit),
-        LedgerAccountTemplate(id: "jiebei", name: "借呗", icon: "arrow.up.arrow.down.circle.fill", tintStyle: .lavender, group: .credit),
-        LedgerAccountTemplate(id: "custom-credit", name: "自定义", icon: "ellipsis.circle.fill", tintStyle: .coral, group: .credit),
+        LedgerAccountTemplate(
+            id: "jiebei",
+            name: "借呗",
+            icon: "arrow.up.arrow.down.circle.fill",
+            tintStyle: .lavender,
+            group: .credit),
+        LedgerAccountTemplate(
+            id: "custom-credit",
+            name: "自定义",
+            icon: "ellipsis.circle.fill",
+            tintStyle: .coral,
+            group: .credit),
         LedgerAccountTemplate(id: "metro", name: "公交卡", icon: "tram.fill", tintStyle: .gold, group: .recharge),
         LedgerAccountTemplate(id: "meal-card", name: "饭卡", icon: "fork.knife", tintStyle: .mint, group: .recharge),
-        LedgerAccountTemplate(id: "custom-recharge", name: "自定义", icon: "ellipsis.circle.fill", tintStyle: .lavender, group: .recharge),
-        LedgerAccountTemplate(id: "stock", name: "股票", icon: "chart.line.uptrend.xyaxis.circle.fill", tintStyle: .accent, group: .investment),
-        LedgerAccountTemplate(id: "fund", name: "基金", icon: "chart.bar.doc.horizontal.fill", tintStyle: .gold, group: .investment),
-        LedgerAccountTemplate(id: "yuebao", name: "余额宝", icon: "wallet.pass.fill", tintStyle: .mint, group: .investment),
-        LedgerAccountTemplate(id: "change", name: "零钱通", icon: "bitcoinsign.circle.fill", tintStyle: .lavender, group: .investment),
-        LedgerAccountTemplate(id: "deposit", name: "定期存款", icon: "lock.circle.fill", tintStyle: .coral, group: .investment),
-        LedgerAccountTemplate(id: "loan-out", name: "借出", icon: "arrow.up.right.circle.fill", tintStyle: .lavender, group: .loan),
-        LedgerAccountTemplate(id: "loan-in", name: "借入", icon: "arrow.down.left.circle.fill", tintStyle: .coral, group: .loan)
+        LedgerAccountTemplate(
+            id: "custom-recharge",
+            name: "自定义",
+            icon: "ellipsis.circle.fill",
+            tintStyle: .lavender,
+            group: .recharge),
+        LedgerAccountTemplate(
+            id: "stock",
+            name: "股票",
+            icon: "chart.line.uptrend.xyaxis.circle.fill",
+            tintStyle: .accent,
+            group: .investment),
+        LedgerAccountTemplate(
+            id: "fund",
+            name: "基金",
+            icon: "chart.bar.doc.horizontal.fill",
+            tintStyle: .gold,
+            group: .investment),
+        LedgerAccountTemplate(
+            id: "yuebao",
+            name: "余额宝",
+            icon: "wallet.pass.fill",
+            tintStyle: .mint,
+            group: .investment),
+        LedgerAccountTemplate(
+            id: "change",
+            name: "零钱通",
+            icon: "bitcoinsign.circle.fill",
+            tintStyle: .lavender,
+            group: .investment),
+        LedgerAccountTemplate(
+            id: "deposit",
+            name: "定期存款",
+            icon: "lock.circle.fill",
+            tintStyle: .coral,
+            group: .investment),
+        LedgerAccountTemplate(
+            id: "loan-out",
+            name: "借出",
+            icon: "arrow.up.right.circle.fill",
+            tintStyle: .lavender,
+            group: .loan),
+        LedgerAccountTemplate(
+            id: "loan-in",
+            name: "借入",
+            icon: "arrow.down.left.circle.fill",
+            tintStyle: .coral,
+            group: .loan)
     ]
 
     static func templates(for group: LedgerAccountGroup) -> [LedgerAccountTemplate] {
@@ -547,27 +644,100 @@ extension LedgerAccountTemplate {
 
 extension DrawerShortcut {
     static let commonTools: [DrawerShortcut] = [
-        DrawerShortcut(id: "stats", title: "图表统计", icon: "chart.pie", accent: .ledgerAccent, destination: .screen(.statistics)),
-        DrawerShortcut(id: "assets", title: "资产管理", icon: "creditcard", accent: .ledgerGold, destination: .screen(.assets)),
-        DrawerShortcut(id: "books", title: "账本管理", icon: "book.closed", accent: .ledgerMint, destination: .screen(.books)),
-        DrawerShortcut(id: "budget", title: "预算管理", icon: "square.and.pencil", accent: .ledgerLavender, destination: .screen(.budget)),
-        DrawerShortcut(id: "saving", title: "攒钱计划", icon: "dollarsign.circle", accent: .ledgerIncome, destination: .placeholder("攒钱计划")),
-        DrawerShortcut(id: "widgets", title: "小组件", icon: "square.grid.2x2", accent: .ledgerCoral, destination: .screen(.widgets)),
-        DrawerShortcut(id: "categories", title: "分类管理", icon: "square.grid.3x1.folder.fill.badge.plus", accent: .ledgerAccent, destination: .screen(.categories)),
-        DrawerShortcut(id: "tags", title: "标签管理", icon: "bookmark", accent: .ledgerGold, destination: .placeholder("标签管理"))
+        DrawerShortcut(
+            id: "stats",
+            title: "图表统计",
+            icon: "chart.pie",
+            accent: .ledgerAccent,
+            destination: .screen(.statistics)),
+        DrawerShortcut(
+            id: "assets",
+            title: "资产管理",
+            icon: "creditcard",
+            accent: .ledgerGold,
+            destination: .screen(.assets)),
+        DrawerShortcut(
+            id: "books",
+            title: "账本管理",
+            icon: "book.closed",
+            accent: .ledgerMint,
+            destination: .screen(.books)),
+        DrawerShortcut(
+            id: "budget",
+            title: "预算管理",
+            icon: "square.and.pencil",
+            accent: .ledgerLavender,
+            destination: .screen(.budget)),
+        DrawerShortcut(
+            id: "saving",
+            title: "攒钱计划",
+            icon: "dollarsign.circle",
+            accent: .ledgerIncome,
+            destination: .placeholder("攒钱计划")),
+        DrawerShortcut(
+            id: "widgets",
+            title: "小组件",
+            icon: "square.grid.2x2",
+            accent: .ledgerCoral,
+            destination: .screen(.widgets)),
+        DrawerShortcut(
+            id: "categories",
+            title: "分类管理",
+            icon: "square.grid.3x1.folder.fill.badge.plus",
+            accent: .ledgerAccent,
+            destination: .screen(.categories)),
+        DrawerShortcut(
+            id: "tags",
+            title: "标签管理",
+            icon: "bookmark",
+            accent: .ledgerGold,
+            destination: .placeholder("标签管理"))
     ]
 
     static let quickTools: [DrawerShortcut] = [
-        DrawerShortcut(id: "import", title: "导入导出", icon: "square.and.arrow.down", accent: .ledgerAccent, destination: .placeholder("导入导出")),
-        DrawerShortcut(id: "automation", title: "自动记账", icon: "doc.text.magnifyingglass", accent: .ledgerMint, destination: .screen(.autoLedgerCenter)),
-        DrawerShortcut(id: "schedule", title: "定时记账", icon: "clock.arrow.circlepath", accent: .ledgerLavender, destination: .placeholder("定时记账"))
+        DrawerShortcut(
+            id: "import",
+            title: "导入导出",
+            icon: "square.and.arrow.down",
+            accent: .ledgerAccent,
+            destination: .placeholder("导入导出")),
+        DrawerShortcut(
+            id: "automation",
+            title: "自动记账",
+            icon: "doc.text.magnifyingglass",
+            accent: .ledgerMint,
+            destination: .screen(.autoLedgerCenter)),
+        DrawerShortcut(
+            id: "schedule",
+            title: "定时记账",
+            icon: "clock.arrow.circlepath",
+            accent: .ledgerLavender,
+            destination: .placeholder("定时记账"))
     ]
 }
 
 extension DrawerLinkItem {
     static let settingsItems: [DrawerLinkItem] = [
-        DrawerLinkItem(id: "settings", title: "设置", icon: "gearshape", accent: .ledgerAccent, showsBadge: false, destination: .screen(.settings)),
-        DrawerLinkItem(id: "backup", title: "数据备份", icon: "externaldrive", accent: .ledgerMint, showsBadge: false, destination: .screen(.backup)),
-        DrawerLinkItem(id: "privacy", title: "隐私与安全", icon: "lock.shield", accent: .ledgerGold, showsBadge: false, destination: .screen(.privacy))
+        DrawerLinkItem(
+            id: "settings",
+            title: "设置",
+            icon: "gearshape",
+            accent: .ledgerAccent,
+            showsBadge: false,
+            destination: .screen(.settings)),
+        DrawerLinkItem(
+            id: "backup",
+            title: "数据备份",
+            icon: "externaldrive",
+            accent: .ledgerMint,
+            showsBadge: false,
+            destination: .screen(.backup)),
+        DrawerLinkItem(
+            id: "privacy",
+            title: "隐私与安全",
+            icon: "lock.shield",
+            accent: .ledgerGold,
+            showsBadge: false,
+            destination: .screen(.privacy))
     ]
 }

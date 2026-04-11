@@ -53,10 +53,9 @@ struct HomeView: View {
                         onShortcutTap: handleDrawerDestination(_:),
                         onClose: {
                             closeDrawer()
-                        }
-                    )
-                    .transition(.move(edge: .leading).combined(with: .opacity))
-                    .zIndex(1)
+                        })
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                        .zIndex(1)
                 }
             }
             .animation(.spring(response: 0.28, dampingFraction: 0.92), value: isDrawerPresented)
@@ -69,7 +68,7 @@ struct HomeView: View {
                 .environmentObject(store)
         }
         .alert("功能预留", isPresented: featureAlertBinding) {
-            Button("知道了", role: .cancel) { }
+            Button("知道了", role: .cancel) {}
         } message: {
             Text("\(highlightedFeature ?? "这个入口") 先保留了结构和入口，后续我们可以继续把它做成完整功能。")
         }
@@ -134,12 +133,12 @@ struct HomeView: View {
                                 .fill(hasRecord ? Color.ledgerAccentSoft : Color.ledgerCanvas)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .stroke(isToday ? Color.ledgerAccent : Color.clear, lineWidth: 2)
-                                )
+                                        .stroke(isToday ? Color.ledgerAccent : Color.clear, lineWidth: 2))
 
                             Text(isToday ? "今" : "\(day)")
                                 .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                .foregroundStyle(hasRecord || isToday ? Color.ledgerAccent : Color.ledgerMuted.opacity(0.8))
+                                .foregroundStyle(hasRecord || isToday ? Color.ledgerAccent : Color.ledgerMuted
+                                    .opacity(0.8))
                         }
                         .frame(height: 46)
                     }
@@ -241,7 +240,8 @@ struct HomeView: View {
                             store.isBalanceVisible.toggle()
                         }
                     } label: {
-                        Image(systemName: store.appSettings.hideSensitiveInfo ? "lock.fill" : (store.isBalanceVisible ? "eye.fill" : "eye.slash.fill"))
+                        Image(systemName: store.appSettings
+                            .hideSensitiveInfo ? "lock.fill" : (store.isBalanceVisible ? "eye.fill" : "eye.slash.fill"))
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Color.ledgerAccent)
                     }
@@ -253,19 +253,19 @@ struct HomeView: View {
                 Button {
                     openScreen(.statistics)
                 } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "chart.pie.fill")
-                            Text("统计")
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 12, weight: .bold))
-                        }
-                        .foregroundStyle(Color.ledgerText)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(Color.ledgerAccentSoft.opacity(0.85))
-                        .clipShape(Capsule())
+                    HStack(spacing: 8) {
+                        Image(systemName: "chart.pie.fill")
+                        Text("统计")
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .bold))
                     }
+                    .foregroundStyle(Color.ledgerText)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color.ledgerAccentSoft.opacity(0.85))
+                    .clipShape(Capsule())
+                }
                 .buttonStyle(LedgerResponsiveButtonStyle())
             }
 
@@ -294,8 +294,7 @@ struct HomeView: View {
                     BudgetRingView(
                         progress: store.budgetProgress,
                         budgetLimit: store.budgetLimit,
-                        isSensitiveVisible: isSensitiveInfoVisible
-                    )
+                        isSensitiveVisible: isSensitiveInfoVisible)
                         .frame(width: 100, height: 100)
                 }
 
@@ -306,8 +305,7 @@ struct HomeView: View {
                         BudgetRingView(
                             progress: store.budgetProgress,
                             budgetLimit: store.budgetLimit,
-                            isSensitiveVisible: isSensitiveInfoVisible
-                        )
+                            isSensitiveVisible: isSensitiveInfoVisible)
                             .frame(width: 108, height: 108)
                         Spacer()
                     }
@@ -321,11 +319,8 @@ struct HomeView: View {
                     LinearGradient(
                         colors: [Color.white, Color.ledgerCard],
                         startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .shadow(color: Color.ledgerAccent.opacity(0.08), radius: 20, x: 0, y: 14)
-        )
+                        endPoint: .bottomTrailing))
+                .shadow(color: Color.ledgerAccent.opacity(0.08), radius: 20, x: 0, y: 14))
     }
 
     private var todayHeader: some View {
@@ -403,7 +398,8 @@ struct HomeView: View {
                         .font(.system(size: 18, weight: .bold, design: .rounded))
                         .foregroundStyle(Color.ledgerText)
 
-                    Text(store.appSettings.showRecordImages ? "截图识别 -> AI 结构化 -> 人工确认后入账" : "截图识别 -> AI 结构化（图片仅用于解析，不回显）")
+                    Text(store.appSettings
+                        .showRecordImages ? "截图识别 -> AI 结构化 -> 人工确认后入账" : "截图识别 -> AI 结构化（图片仅用于解析，不回显）")
                         .font(.system(size: 13, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.ledgerMuted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -563,10 +559,8 @@ struct HomeView: View {
             LinearGradient(
                 colors: [Color.white.opacity(0.0), Color.white.opacity(0.68), Color.white],
                 startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
-        )
+                endPoint: .bottom)
+                .ignoresSafeArea())
     }
 
     private var featureAlertBinding: Binding<Bool> {
@@ -576,8 +570,7 @@ struct HomeView: View {
                 if !newValue {
                     highlightedFeature = nil
                 }
-            }
-        )
+            })
     }
 
     private func handleDrawerDestination(_ destination: DrawerDestination) {
@@ -762,7 +755,9 @@ private struct BudgetRingView: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color.ledgerAccentSoft.opacity(0.85), style: StrokeStyle(lineWidth: 14, dash: budgetLimit == nil ? [8, 6] : []))
+                .stroke(
+                    Color.ledgerAccentSoft.opacity(0.85),
+                    style: StrokeStyle(lineWidth: 14, dash: budgetLimit == nil ? [8, 6] : []))
 
             if budgetLimit != nil {
                 Circle()
@@ -770,10 +765,8 @@ private struct BudgetRingView: View {
                     .stroke(
                         AngularGradient(
                             colors: [.ledgerAccent, .ledgerMint, .ledgerGold],
-                            center: .center
-                        ),
-                        style: StrokeStyle(lineWidth: 14, lineCap: .round)
-                    )
+                            center: .center),
+                        style: StrokeStyle(lineWidth: 14, lineCap: .round))
                     .rotationEffect(.degrees(-90))
             }
 
@@ -813,9 +806,7 @@ private struct BudgetProgressBar: View {
                         LinearGradient(
                             colors: [.ledgerAccent, .ledgerMint],
                             startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                            endPoint: .trailing))
                     .frame(width: proxy.size.width * progress)
             }
         }
@@ -844,7 +835,8 @@ private struct TransactionRow: View {
                     .font(.system(size: 17, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.ledgerText)
 
-                Text("\(isSensitiveVisible ? entry.paymentMethod : "支付方式已隐藏") · \(LedgerFormatters.entryTime(for: entry.date))")
+                Text(
+                    "\(isSensitiveVisible ? entry.paymentMethod : "支付方式已隐藏") · \(LedgerFormatters.entryTime(for: entry.date))")
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(Color.ledgerMuted)
             }
@@ -853,9 +845,11 @@ private struct TransactionRow: View {
 
             Text(
                 isSensitiveVisible
-                    ? (entry.kind == .expense ? "-\(LedgerFormatters.currency(entry.amount))" : "+\(LedgerFormatters.currency(entry.amount))")
-                    : (entry.kind == .expense ? "-¥••••" : "+¥••••")
-            )
+                    ?
+                    (entry
+                        .kind == .expense ? "-\(LedgerFormatters.currency(entry.amount))" :
+                        "+\(LedgerFormatters.currency(entry.amount))")
+                    : (entry.kind == .expense ? "-¥••••" : "+¥••••"))
                 .font(.system(size: 17, weight: .bold, design: .rounded))
                 .foregroundStyle(entry.kind == .expense ? Color.ledgerExpense : Color.ledgerIncome)
         }
