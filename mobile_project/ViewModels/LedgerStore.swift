@@ -158,7 +158,7 @@ final class LedgerStore: ObservableObject {
 
     var totalAssets: Double {
         accounts
-            .filter { $0.group.affectsAssets }
+            .filter(\.group.affectsAssets)
             .reduce(0) { $0 + $1.balance }
     }
 
@@ -726,6 +726,17 @@ final class LedgerStore: ObservableObject {
                 expenseCategories: scheme.expenseCategories,
                 incomeCategories: filtered)
         }
+
+        let categoryStillExists = categorySchemes.contains { scheme in
+            switch kind {
+            case .expense:
+                scheme.expenseCategories.contains { $0.id == categoryID }
+            case .income:
+                scheme.incomeCategories.contains { $0.id == categoryID }
+            }
+        }
+
+        guard !categoryStillExists else { return }
 
         categoryBudgets.removeAll { $0.categoryID == categoryID }
     }

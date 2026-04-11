@@ -33,7 +33,7 @@ if command -v swiftformat >/dev/null 2>&1; then
     if [ -f "$SWIFT_VERSION_FILE" ]; then
       swift_version="$(tr -d '[:space:]' < "$SWIFT_VERSION_FILE")"
       if [ -n "$swift_version" ]; then
-        swiftformat_args+=(--swift-version "$swift_version")
+        swiftformat_args+=(--swiftversion "$swift_version")
       fi
     fi
   else
