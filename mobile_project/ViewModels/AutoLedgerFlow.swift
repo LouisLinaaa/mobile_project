@@ -1,12 +1,19 @@
 import Foundation
+import Vision
+
+enum AutoLedgerRecognitionEngine {
+    case gateway
+    case local
+}
 
 protocol AutoLedgerServiceProtocol {
+    var recognitionEngine: AutoLedgerRecognitionEngine { get }
     func parseReceipt(_ request: AutoLedgerParseRequest) async throws -> AutoLedgerParseResult
 }
 
 enum AutoLedgerServiceEnvironment {
-    case mock
-    case gateway(baseURL: URL, apiKey: String?)
+    case local
+    case gateway(AutoLedgerLLMConfiguration)
 }
 
 enum AutoLedgerServiceError: LocalizedError {
@@ -21,80 +28,557 @@ enum AutoLedgerServiceError: LocalizedError {
         case .networkFailure(let status):
             "网络请求失败（\(status)），请检查后重试。"
         case .parseFailed:
-            "识别结果缺少关键字段，请手动补全后保存。"
+            "识别结果缺少关键字段，暂时还不能自动入账。"
         }
     }
 }
 
 struct AutoLedgerServiceFactory {
-    static func make(environment: AutoLedgerServiceEnvironment = .mock) -> any AutoLedgerServiceProtocol {
-        switch environment {
-        case .mock:
-            MockAutoLedgerService()
-        case .gateway(let baseURL, let apiKey):
-            GatewayAutoLedgerService(baseURL: baseURL, apiKey: apiKey)
+    static func make(environment: AutoLedgerServiceEnvironment? = nil) -> any AutoLedgerServiceProtocol {
+        let resolvedEnvironment = environment ?? configuredEnvironment() ?? .local
+
+        return switch resolvedEnvironment {
+        case .local:
+            LocalAutoLedgerService()
+        case .gateway(let configuration):
+            GatewayAutoLedgerService(configuration: configuration)
+        }
+    }
+
+    private static func configuredEnvironment(bundle: Bundle = .main) -> AutoLedgerServiceEnvironment? {
+        guard let configuration = AutoLedgerLLMConfiguration.load(bundle: bundle) else {
+            return nil
+        }
+
+        return .gateway(configuration)
+    }
+}
+
+struct LocalAutoLedgerService: AutoLedgerServiceProtocol {
+    let recognitionEngine: AutoLedgerRecognitionEngine = .local
+
+    func parseReceipt(_ request: AutoLedgerParseRequest) async throws -> AutoLedgerParseResult {
+        if let localResult = try await AutoLedgerLocalRecognizer.parse(request) {
+            return localResult
+        }
+        throw AutoLedgerServiceError.parseFailed
+    }
+}
+
+private struct AutoLedgerDetectedTextLine {
+    let text: String
+    let midY: CGFloat
+    let minX: CGFloat
+}
+
+private struct AutoLedgerAmountCandidate {
+    let amount: Double
+    let lineIndex: Int
+    let lineText: String
+    let score: Int
+}
+
+private enum AutoLedgerOCRTextExtractor {
+    static func mergedText(from request: AutoLedgerParseRequest) async -> String {
+        var parts: [String] = []
+
+        if let ocrTextHint = request.ocrTextHint?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !ocrTextHint.isEmpty {
+            parts.append(ocrTextHint)
+        }
+
+        if let imageData = request.imageData,
+           let recognizedText = await recognizeText(in: imageData),
+           !recognizedText.isEmpty {
+            parts.append(recognizedText)
+        }
+
+        return parts
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+    }
+
+    private static func recognizeText(in imageData: Data) async -> String? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let request = VNRecognizeTextRequest()
+                    request.recognitionLevel = .accurate
+                    request.usesLanguageCorrection = false
+                    request.recognitionLanguages = ["zh-Hans", "en-US"]
+
+                    let handler = VNImageRequestHandler(data: imageData, options: [:])
+                    try handler.perform([request])
+
+                    let observations = (request.results ?? [])
+                        .compactMap { observation -> AutoLedgerDetectedTextLine? in
+                            guard let candidate = observation.topCandidates(1).first else { return nil }
+                            return AutoLedgerDetectedTextLine(
+                                text: candidate.string,
+                                midY: observation.boundingBox.midY,
+                                minX: observation.boundingBox.minX)
+                        }
+                        .sorted {
+                            let verticalDelta = abs($0.midY - $1.midY)
+                            if verticalDelta > 0.025 {
+                                return $0.midY > $1.midY
+                            }
+                            return $0.minX < $1.minX
+                        }
+
+                    continuation.resume(returning: observations.map(\.text).joined(separator: "\n"))
+                } catch {
+                    continuation.resume(returning: nil)
+                }
+            }
         }
     }
 }
 
-struct MockAutoLedgerService: AutoLedgerServiceProtocol {
-    func parseReceipt(_ request: AutoLedgerParseRequest) async throws -> AutoLedgerParseResult {
-        try await Task.sleep(nanoseconds: 650_000_000)
+private enum AutoLedgerLocalRecognizer {
+    private static let amountRegex = try! NSRegularExpression(
+        pattern: "(?:[¥￥]\\s*)?([0-9]+(?:,[0-9]{3})*(?:\\.[0-9]{1,2})|[0-9]+(?:\\.[0-9]{1,2}))")
+    private static let fullDateTimeFormats = [
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy-MM-dd HH:mm",
+        "yyyy/M/d HH:mm:ss",
+        "yyyy/M/d HH:mm",
+        "yyyy年M月d日 HH:mm:ss",
+        "yyyy年M月d日 HH:mm"
+    ]
 
-        let hints = request.ocrTextHint ?? ""
-        let isIncome = hints.contains("退款") || hints.contains("回款")
-        let now = ISO8601DateFormatter().string(from: Date())
+    static func parse(_ request: AutoLedgerParseRequest) async throws -> AutoLedgerParseResult? {
+        let mergedText = await AutoLedgerOCRTextExtractor.mergedText(from: request)
+        let lines = normalizedLines(from: mergedText)
 
-        if isIncome {
-            return AutoLedgerParseResult(
-                amount: 36.80,
-                kind: "income",
-                category: "退款",
-                paymentMethod: "待确认",
-                time: now,
-                merchant: "平台退款",
-                note: "自动识别：商品退货退款",
-                rawText: "商户: 平台退款 金额:36.80 支付方式:电子支付",
-                confidence: 0.85,
-                reason: "识别到退款关键词和正向金额")
-        }
+        guard !lines.isEmpty else { return nil }
+
+        let amountCandidates = amountCandidates(from: lines)
+        let primaryCandidate = amountCandidates.sorted {
+            if $0.score == $1.score {
+                return $0.lineIndex < $1.lineIndex
+            }
+            return $0.score > $1.score
+        }.first
+
+        let fullText = lines.joined(separator: "\n")
+        let kind = detectKind(in: fullText)
+        let recognizedEntryCount = max(1, amountCandidates.filter { $0.score >= 3 }.count)
+        let merchant = detectMerchant(around: primaryCandidate?.lineIndex, lines: lines)
+        let paymentMethod = detectPaymentMethod(in: fullText)
+        let category = detectCategory(in: [merchant, fullText].compactMap { $0 }.joined(separator: "\n"), kind: kind)
+        let occurredAt = detectOccurredAt(around: primaryCandidate?.lineIndex, lines: lines) ?? Date()
+        let reason = buildReason(
+            amountCandidate: primaryCandidate,
+            merchant: merchant,
+            paymentMethod: paymentMethod,
+            recognizedEntryCount: recognizedEntryCount)
+        let note = buildNote(
+            merchant: merchant,
+            kind: kind,
+            recognizedEntryCount: recognizedEntryCount)
+        let confidence = buildConfidence(
+            amountCandidate: primaryCandidate,
+            merchant: merchant,
+            paymentMethod: paymentMethod,
+            category: category,
+            recognizedEntryCount: recognizedEntryCount)
+
+        guard let primaryCandidate else { return nil }
 
         return AutoLedgerParseResult(
-            amount: 18.50,
-            kind: "expense",
-            category: "餐饮",
-            paymentMethod: "待确认",
-            time: now,
-            merchant: "便利店",
-            note: "自动识别：晚餐补给",
-            rawText: "商户: 便利店 金额:18.50 支付方式:电子支付",
-            confidence: 0.81,
-            reason: "识别到消费场景和支付方式")
+            amount: primaryCandidate.amount,
+            kind: kind.rawValue,
+            category: category,
+            paymentMethod: paymentMethod,
+            time: ISO8601DateFormatter().string(from: occurredAt),
+            merchant: merchant,
+            note: note,
+            rawText: lines.prefix(24).joined(separator: "\n"),
+            confidence: confidence,
+            reason: reason,
+            recognizedEntryCount: recognizedEntryCount)
+    }
+
+    private static func normalizedLines(from text: String) -> [String] {
+        var lines: [String] = []
+
+        for rawLine in text.components(separatedBy: .newlines) {
+            let normalized = rawLine
+                .replacingOccurrences(of: "\u{00A0}", with: " ")
+                .replacingOccurrences(of: "\t", with: " ")
+                .replacingOccurrences(of: "：", with: ":")
+                .replacingOccurrences(of: "￥", with: "¥")
+                .components(separatedBy: .whitespacesAndNewlines)
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            guard normalized.count >= 2 else { continue }
+            guard lines.last != normalized else { continue }
+            lines.append(normalized)
+        }
+
+        return lines
+    }
+
+    private static func amountCandidates(from lines: [String]) -> [AutoLedgerAmountCandidate] {
+        var candidates: [AutoLedgerAmountCandidate] = []
+
+        for (lineIndex, lineText) in lines.enumerated() {
+            guard shouldInspectAmount(in: lineText) else { continue }
+
+            for amount in extractAmounts(from: lineText) {
+                let score = scoreAmountLine(lineText, amount: amount)
+                guard score >= 2 else { continue }
+
+                candidates.append(
+                    AutoLedgerAmountCandidate(
+                        amount: amount,
+                        lineIndex: lineIndex,
+                        lineText: lineText,
+                        score: score))
+            }
+        }
+
+        return deduplicatedAmountCandidates(candidates)
+    }
+
+    private static func deduplicatedAmountCandidates(_ candidates: [AutoLedgerAmountCandidate])
+        -> [AutoLedgerAmountCandidate] {
+        var seenKeys = Set<String>()
+        var result: [AutoLedgerAmountCandidate] = []
+
+        for candidate in candidates {
+            let key = "\(candidate.lineIndex)-\(String(format: "%.2f", candidate.amount))"
+            guard !seenKeys.contains(key) else { continue }
+            seenKeys.insert(key)
+            result.append(candidate)
+        }
+
+        return result
+    }
+
+    private static func shouldInspectAmount(in line: String) -> Bool {
+        let ignoredKeywords = [
+            "汇率", "市场汇率", "交易汇率", "港币", "人民币", "1港币", "HKD", "CNY",
+            "优惠", "折扣", "标价", "关于此快捷指令", "添加快捷指令", "自动记账", "允许"
+        ]
+
+        return ignoredKeywords.allSatisfy { !line.localizedCaseInsensitiveContains($0) }
+    }
+
+    private static func extractAmounts(from line: String) -> [Double] {
+        let range = NSRange(line.startIndex..., in: line)
+        let matches = amountRegex.matches(in: line, options: [], range: range)
+
+        return matches.compactMap { match in
+            guard match.numberOfRanges > 1,
+                  let valueRange = Range(match.range(at: 1), in: line) else { return nil }
+            let rawValue = line[valueRange]
+                .replacingOccurrences(of: ",", with: "")
+                .replacingOccurrences(of: "¥", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let amount = Double(rawValue), amount >= 1 else { return nil }
+            return amount
+        }
+    }
+
+    private static func scoreAmountLine(_ line: String, amount: Double) -> Int {
+        var score = 0
+
+        if line.contains("¥") || line.contains("￥") {
+            score += 4
+        }
+
+        if ["支付", "收款", "付款", "账单详情", "总计", "合计", "实付", "支出", "收入"].contains(where: line.contains) {
+            score += 3
+        }
+
+        if line.count <= 18 {
+            score += 1
+        }
+
+        if amount >= 1, amount <= 50000 {
+            score += 1
+        }
+
+        if ["汇率", "港币", "人民币", "优惠", "标价", "折扣", "="].contains(where: line.contains) {
+            score -= 4
+        }
+
+        return score
+    }
+
+    private static func detectKind(in text: String) -> LedgerKind {
+        if ["退款", "退回", "回款", "收入", "退款成功"].contains(where: text.localizedCaseInsensitiveContains) {
+            return .income
+        }
+
+        return .expense
+    }
+
+    private static func detectPaymentMethod(in text: String) -> String {
+        if ["微信零钱", "微信支付", "微信"].contains(where: text.localizedCaseInsensitiveContains) {
+            return "微信"
+        }
+
+        if ["支付宝", "Alipay"].contains(where: text.localizedCaseInsensitiveContains) {
+            return "支付宝"
+        }
+
+        if ["银行卡", "信用卡", "储蓄卡", "Mastercard", "Visa"].contains(where: text.localizedCaseInsensitiveContains) {
+            return "银行卡"
+        }
+
+        if ["现金", "Cash"].contains(where: text.localizedCaseInsensitiveContains) {
+            return "现金"
+        }
+
+        return "待确认"
+    }
+
+    private static func detectCategory(in text: String, kind: LedgerKind) -> String? {
+        if kind == .income, text.localizedCaseInsensitiveContains("退款") {
+            return "退款"
+        }
+
+        let categoryMappings: [(String, [String])] = [
+            ("餐饮", ["KFC", "麦当劳", "星巴克", "奶茶", "咖啡", "餐", "外卖", "饮品", "面", "饭"]),
+            ("交通", ["地铁", "打车", "公交", "滴滴", "高铁", "火车", "停车", "加油"]),
+            ("购物", ["淘宝", "京东", "商场", "购物", "超市", "便利店"]),
+            ("住房", ["房租", "物业", "水费", "电费", "燃气"]),
+            ("娱乐", ["电影", "游戏", "门票", "演出"]),
+            ("医疗", ["医院", "诊所", "药房", "药店"])
+        ]
+
+        for (category, keywords) in categoryMappings {
+            if keywords.contains(where: text.localizedCaseInsensitiveContains) {
+                return category
+            }
+        }
+
+        return nil
+    }
+
+    private static func detectMerchant(around lineIndex: Int?, lines: [String]) -> String? {
+        let anchor = lineIndex ?? 0
+        let candidateIndexes = Array(max(0, anchor - 4)...min(lines.count - 1, anchor + 3))
+
+        let candidates = candidateIndexes.compactMap { index -> (text: String, score: Int)? in
+            let line = lines[index]
+            guard isMerchantCandidate(line) else { return nil }
+
+            var score = 6 - abs(index - anchor)
+            if containsReadableMerchantCharacters(line) {
+                score += 2
+            }
+
+            if index < anchor {
+                score += 1
+            }
+
+            return (line, score)
+        }
+
+        return candidates.sorted {
+            if $0.score == $1.score {
+                return $0.text.count < $1.text.count
+            }
+            return $0.score > $1.score
+        }.first?.text
+    }
+
+    private static func isMerchantCandidate(_ line: String) -> Bool {
+        if line.count < 2 || line.count > 36 {
+            return false
+        }
+
+        if extractAmounts(from: line).isEmpty == false || detectExplicitTime(in: line) != nil {
+            return false
+        }
+
+        let ignoredKeywords = [
+            "微信支付", "支付宝", "账单详情", "标价", "交易汇率", "市场汇率",
+            "自动记账", "完成", "查看更多", "全球有礼", "支付服务", "我的账单"
+        ]
+
+        return ignoredKeywords.allSatisfy { !line.localizedCaseInsensitiveContains($0) }
+    }
+
+    private static func containsReadableMerchantCharacters(_ line: String) -> Bool {
+        line.unicodeScalars.contains { scalar in
+            CharacterSet.letters.contains(scalar)
+                || (0x4E00...0x9FFF).contains(Int(scalar.value))
+        }
+    }
+
+    private static func detectOccurredAt(around lineIndex: Int?, lines: [String]) -> Date? {
+        let anchor = lineIndex ?? 0
+        let candidateIndexes = Array(max(0, anchor - 5)...min(lines.count - 1, anchor + 2))
+
+        for index in candidateIndexes {
+            if let date = detectExplicitTime(in: lines[index]) {
+                return date
+            }
+        }
+
+        return nil
+    }
+
+    private static func detectExplicitTime(in line: String) -> Date? {
+        if let fullDate = firstMatch(
+            pattern: "(20\\d{2}[-/年.]\\d{1,2}[-/月.]\\d{1,2}(?:日)?\\s+\\d{1,2}:\\d{2}(?::\\d{2})?)",
+            in: line) {
+            return parseDateTime(fullDate)
+        }
+
+        guard let timeString = firstMatch(pattern: "(\\b\\d{1,2}:\\d{2}(?::\\d{2})?\\b)", in: line) else {
+            return nil
+        }
+
+        return mergeToday(with: timeString)
+    }
+
+    private static func parseDateTime(_ rawValue: String) -> Date? {
+        let cleaned = rawValue
+            .replacingOccurrences(of: "年", with: "-")
+            .replacingOccurrences(of: "月", with: "-")
+            .replacingOccurrences(of: "日", with: "")
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ".", with: "-")
+
+        for format in fullDateTimeFormats {
+            let formatter = DateFormatter()
+            formatter.locale = LedgerFormatters.locale
+            formatter.timeZone = .current
+            formatter.dateFormat = format
+
+            if let date = formatter.date(from: rawValue) ?? formatter.date(from: cleaned) {
+                return date
+            }
+        }
+
+        return nil
+    }
+
+    private static func mergeToday(with rawTime: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.locale = LedgerFormatters.locale
+        formatter.timeZone = .current
+        formatter.dateFormat = rawTime.count > 5 ? "HH:mm:ss" : "HH:mm"
+
+        guard let time = formatter.date(from: rawTime) else { return nil }
+
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.hour, .minute, .second], from: time)
+        return calendar.date(
+            bySettingHour: components.hour ?? 0,
+            minute: components.minute ?? 0,
+            second: components.second ?? 0,
+            of: Date())
+    }
+
+    private static func firstMatch(pattern: String, in text: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(text.startIndex..., in: text)
+        guard let match = regex.firstMatch(in: text, options: [], range: range),
+              let matchedRange = Range(match.range(at: 1), in: text) else { return nil }
+        return String(text[matchedRange])
+    }
+
+    private static func buildReason(
+        amountCandidate: AutoLedgerAmountCandidate?,
+        merchant: String?,
+        paymentMethod: String,
+        recognizedEntryCount: Int) -> String {
+        var parts: [String] = []
+
+        if let amountCandidate {
+            parts.append("命中金额行“\(amountCandidate.lineText)”")
+        }
+
+        if let merchant, !merchant.isEmpty {
+            parts.append("推断商户为“\(merchant)”")
+        }
+
+        if paymentMethod != "待确认" {
+            parts.append("支付方式识别为\(paymentMethod)")
+        }
+
+        if recognizedEntryCount > 1 {
+            parts.append("截图中疑似存在\(recognizedEntryCount)笔候选记录，当前优先带出最可信的一笔")
+        }
+
+        return parts.isEmpty ? "已根据截图文本生成待确认草稿。" : parts.joined(separator: "，")
+    }
+
+    private static func buildNote(merchant: String?, kind: LedgerKind, recognizedEntryCount: Int) -> String {
+        if kind == .income {
+            return recognizedEntryCount > 1 ? "自动识别：截图中存在多笔记录，当前优先处理一笔收入" : "自动识别：截图收入记录"
+        }
+
+        if let merchant, !merchant.isEmpty {
+            return recognizedEntryCount > 1 ? "自动识别：\(merchant) 等 \(recognizedEntryCount) 笔候选记录" : "自动识别：\(merchant)"
+        }
+
+        return recognizedEntryCount > 1 ? "自动识别：截图中存在多笔候选记录" : "自动识别：支付截图"
+    }
+
+    private static func buildConfidence(
+        amountCandidate: AutoLedgerAmountCandidate?,
+        merchant: String?,
+        paymentMethod: String,
+        category: String?,
+        recognizedEntryCount: Int) -> Double {
+        var score = 0.42
+
+        if let amountCandidate {
+            score += min(Double(amountCandidate.score) * 0.05, 0.28)
+        }
+
+        if let merchant, !merchant.isEmpty {
+            score += 0.12
+        }
+
+        if paymentMethod != "待确认" {
+            score += 0.08
+        }
+
+        if category != nil {
+            score += 0.06
+        }
+
+        if recognizedEntryCount > 1 {
+            score += 0.04
+        }
+
+        return min(score, 0.96)
     }
 }
 
 final class GatewayAutoLedgerService: AutoLedgerServiceProtocol {
-    private let baseURL: URL
-    private let apiKey: String?
+    private let configuration: AutoLedgerLLMConfiguration
+    let recognitionEngine: AutoLedgerRecognitionEngine = .gateway
 
-    init(baseURL: URL, apiKey: String?) {
-        self.baseURL = baseURL
-        self.apiKey = apiKey
+    init(configuration: AutoLedgerLLMConfiguration) {
+        self.configuration = configuration
     }
 
     func parseReceipt(_ request: AutoLedgerParseRequest) async throws -> AutoLedgerParseResult {
-        var urlRequest = URLRequest(url: baseURL)
+        var urlRequest = URLRequest(url: configuration.endpoint)
         urlRequest.httpMethod = "POST"
         urlRequest.addValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        if let apiKey, !apiKey.isEmpty {
+        if let apiKey = configuration.apiKey, !apiKey.isEmpty {
             urlRequest.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
 
-        let payload = AutoLedgerGatewayRequestBody(
-            prompt: AutoLedgerPromptTemplate.userPrompt(for: request),
-            rawOCR: request.ocrTextHint,
-            imageBase64: request.imageData?.base64EncodedString())
+        let mergedOCRText = await AutoLedgerOCRTextExtractor.mergedText(from: request)
+        let payload = configuration.makeRequestBody(
+            for: request,
+            rawOCR: mergedOCRText.isEmpty ? nil : mergedOCRText)
         urlRequest.httpBody = try JSONEncoder().encode(payload)
 
         let (data, response) = try await URLSession.shared.data(for: urlRequest)
@@ -107,29 +591,15 @@ final class GatewayAutoLedgerService: AutoLedgerServiceProtocol {
             throw AutoLedgerServiceError.networkFailure(http.statusCode)
         }
 
-        let decoded = try JSONDecoder().decode(AutoLedgerGatewayResponse.self, from: data)
-        return try decoded.normalizedResult()
-    }
-}
+        if let decoded = try? JSONDecoder().decode(AutoLedgerGatewayResponse.self, from: data) {
+            return try decoded.normalizedResult()
+        }
 
-enum AutoLedgerPromptTemplate {
-    static let systemPrompt = """
-    你是记账结构化助手。请把账单信息提取为严格 JSON，字段必须包含：amount, kind, category, paymentMethod, time, merchant, note, rawText, confidence, reason。
-    kind 仅允许 expense 或 income。无法确定时也要给出最可能值，并在 reason 说明。
-    """
+        if let directResult = try? JSONDecoder().decode(AutoLedgerParseResult.self, from: data) {
+            return directResult
+        }
 
-    static func userPrompt(for request: AutoLedgerParseRequest) -> String {
-        """
-        \(systemPrompt)
-
-        上下文：
-        - currency: \(request.context.currencyCode)
-        - locale: \(request.context.localeIdentifier)
-        - categoryCandidates: \(request.context.categoryCandidates.joined(separator: ", "))
-        - paymentMethodCandidates: \(request.context.paymentMethodCandidates.joined(separator: ", "))
-
-        请基于 OCR 或图像内容输出严格 JSON。
-        """
+        throw AutoLedgerServiceError.invalidResponse
     }
 }
 
@@ -199,6 +669,8 @@ final class AutoLedgerViewModel: ObservableObject {
     private let screenshotCache: AutoLedgerScreenshotCache
     private var cachedURL: URL?
     private var activeFlowSource: AutoLedgerShortcutSource?
+    private var lastRecognizedImageData: Data?
+    private var lastRecognizedOCRTextHint: String?
 
     init(
         service: any AutoLedgerServiceProtocol = AutoLedgerServiceFactory.make(),
@@ -207,10 +679,33 @@ final class AutoLedgerViewModel: ObservableObject {
         self.screenshotCache = screenshotCache
     }
 
+    var recognitionEngine: AutoLedgerRecognitionEngine {
+        service.recognitionEngine
+    }
+
+    var recognitionEngineTitle: String {
+        switch recognitionEngine {
+        case .gateway:
+            "大模型 API 识别"
+        case .local:
+            "本地识别兜底"
+        }
+    }
+
+    var recognitionEngineSubtitle: String {
+        switch recognitionEngine {
+        case .gateway:
+            "快捷指令会直接完成识别与自动入账，截图和 OCR 会一起交给大模型网关。"
+        case .local:
+            "当前还没配置大模型识别，先使用本地 OCR 兜底。把 LLM 配置补齐后会优先切到 API 识别。"
+        }
+    }
+
     func beginShortcutGuide() {
         refreshShortcutStatus()
         errorMessage = nil
         successMessage = nil
+        reviewDraft = nil
         flowState = .awaitingShortcut
     }
 
@@ -222,25 +717,17 @@ final class AutoLedgerViewModel: ObservableObject {
         activeFlowSource = nil
     }
 
-    func triggerMockShortcutParse(store: LedgerStore) async {
-        do {
-            let fakeReceiptText = "商户:便利店 金额:18.50 支付方式:电子支付"
-            let imageData = Data(fakeReceiptText.utf8)
-            try await startReviewFlow(
-                imageData: imageData,
-                ocrTextHint: fakeReceiptText,
-                source: .inAppDemo,
-                store: store)
-        } catch {
-            flowState = .failed
-            errorMessage = error.localizedDescription
-            AutoLedgerHandoffStore.markLastRunFailed(error.localizedDescription)
-            refreshShortcutStatus()
-        }
-    }
-
     func processPendingLaunchIfNeeded(store: LedgerStore) async {
         guard let payload = store.consumeAutoLedgerPendingLaunch() else {
+            refreshShortcutStatus()
+            return
+        }
+
+        let normalizedOCRText = payload.ocrTextHint?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasConsumableInput = payload.imageFilename != nil || !(normalizedOCRText?.isEmpty ?? true)
+
+        if !hasConsumableInput, let educationState = payload.educationState {
+            presentEducationState(educationState, from: payload.source, store: store)
             refreshShortcutStatus()
             return
         }
@@ -249,10 +736,32 @@ final class AutoLedgerViewModel: ObservableObject {
             let imageData = try AutoLedgerHandoffStore.consumeImageData(for: payload)
             try await startReviewFlow(
                 imageData: imageData,
-                ocrTextHint: payload.ocrTextHint,
+                ocrTextHint: normalizedOCRText,
                 source: payload.source,
                 store: store)
-            successMessage = "已接收来自\(payload.source.displayName)的触发，确认后即可入账。"
+            try persistRecognizedDraft(store: store)
+        } catch {
+            flowState = .failed
+            errorMessage = error.localizedDescription
+            AutoLedgerHandoffStore.markLastRunFailed(error.localizedDescription)
+            refreshShortcutStatus()
+        }
+    }
+
+    func retryLastRecognition(store: LedgerStore) async {
+        guard lastRecognizedImageData != nil || !(lastRecognizedOCRTextHint?.isEmpty ?? true) else {
+            flowState = .idle
+            errorMessage = "还没有可重试的截图。请先回到支付页截图并运行自动记账。"
+            return
+        }
+
+        do {
+            try await startReviewFlow(
+                imageData: lastRecognizedImageData,
+                ocrTextHint: lastRecognizedOCRTextHint,
+                source: activeFlowSource ?? .shortcutsApp,
+                store: store)
+            try persistRecognizedDraft(store: store)
         } catch {
             flowState = .failed
             errorMessage = error.localizedDescription
@@ -284,51 +793,38 @@ final class AutoLedgerViewModel: ObservableObject {
     }
 
     func confirmAndSave(store: LedgerStore) {
-        guard let draft = reviewDraft else {
-            errorMessage = "请先完成识别。"
-            return
+        do {
+            try persistRecognizedDraft(store: store)
+        } catch {
+            flowState = .failed
+            errorMessage = error.localizedDescription
+            AutoLedgerHandoffStore.markLastRunFailed(error.localizedDescription)
+            refreshShortcutStatus()
         }
-
-        guard let amount = draft.parsedAmount, amount > 0 else {
-            errorMessage = "金额不合法，请先修正。"
-            return
-        }
-
-        let categories = store.categories(for: draft.kind)
-        let category = categories.first(where: { $0.id == draft.categoryID })
-            ?? fallbackCategory(from: categories, kind: draft.kind)
-
-        let note = draft.note.trimmingCharacters(in: .whitespacesAndNewlines)
-        let merchant = draft.merchant.trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = merchant.isEmpty ? (note.isEmpty ? category.name : note) : merchant
-
-        flowState = .confirmed
-
-        store.addEntry(
-            kind: draft.kind,
-            amount: amount,
-            category: category,
-            paymentMethod: draft.paymentMethod,
-            note: note,
-            title: title,
-            date: draft.occurredAt)
-
-        flowState = .saved
-        successMessage = "已自动入账，可以在首页今日流水查看。"
-        errorMessage = nil
-
-        Task { @MainActor in
-            await screenshotCache.remove(cachedURL)
-            cachedURL = nil
-        }
-        if let activeFlowSource, activeFlowSource != .inAppDemo {
-            AutoLedgerHandoffStore.markLastRunSucceeded()
-        }
-        refreshShortcutStatus()
     }
 
     func refreshShortcutStatus() {
         shortcutStatus = AutoLedgerHandoffStore.loadStatus()
+    }
+
+    func shortcutSetupState(in store: LedgerStore) -> AutoLedgerShortcutSetupState {
+        if let lastErrorMessage = shortcutStatus.lastErrorMessage, !lastErrorMessage.isEmpty {
+            return .lastRunFailed
+        }
+
+        if shortcutStatus.lastTriggeredAt != nil {
+            return .ready
+        }
+
+        if store.appSettings.hasAcknowledgedShortcutInstall {
+            return .installedAwaitingValidation
+        }
+
+        if store.appSettings.hasSeenShortcutInstallGuide {
+            return .installGuideShown
+        }
+
+        return .notInstalled
     }
 
     var shortcutStatusPresentation: AutoLedgerShortcutStatusPresentation {
@@ -343,9 +839,9 @@ final class AutoLedgerViewModel: ObservableObject {
            let source = shortcutStatus.lastSource {
             let completionText = if let lastCompletedAt = shortcutStatus.lastCompletedAt,
                                     lastCompletedAt >= lastTriggeredAt {
-                "，已完成一次审核入账"
+                "，已完成一次自动入账"
             } else {
-                "，等待你在 App 内确认"
+                "，正在完成识别"
             }
 
             return AutoLedgerShortcutStatusPresentation(
@@ -356,7 +852,7 @@ final class AutoLedgerViewModel: ObservableObject {
 
         return AutoLedgerShortcutStatusPresentation(
             title: "还没有快捷动作记录",
-            detail: "点右侧系统按钮添加后，就可以把“自动记账”绑定到辅助触控或操作按钮。",
+            detail: "先在快捷指令里按“截图 -> 从截图获取图像 -> 识别账单”搭好链路，再绑定到辅助触控或操作按钮。",
             tint: "idle")
     }
 
@@ -389,7 +885,8 @@ final class AutoLedgerViewModel: ObservableObject {
             note: result.note ?? "",
             rawText: result.rawText,
             confidence: result.confidence,
-            reason: result.reason)
+            reason: result.reason,
+            recognizedEntryCount: max(1, result.recognizedEntryCount ?? 1))
     }
 
     private func mapCategory(from hint: String?, categories: [LedgerCategory], kind: LedgerKind) -> LedgerCategory {
@@ -397,12 +894,21 @@ final class AutoLedgerViewModel: ObservableObject {
             return fallbackCategory(from: categories, kind: kind)
         }
 
+        let normalizedHint = normalizedLookupText(hint)
+
         if let byID = categories.first(where: { $0.id.caseInsensitiveCompare(hint) == .orderedSame }) {
             return byID
         }
 
         if let byName = categories.first(where: { $0.name.caseInsensitiveCompare(hint) == .orderedSame }) {
             return byName
+        }
+
+        if let fuzzy = categories.first(where: {
+            let normalizedCategoryName = normalizedLookupText($0.name)
+            return normalizedCategoryName.contains(normalizedHint) || normalizedHint.contains(normalizedCategoryName)
+        }) {
+            return fuzzy
         }
 
         return fallbackCategory(from: categories, kind: kind)
@@ -419,6 +925,24 @@ final class AutoLedgerViewModel: ObservableObject {
 
     private func mapPaymentMethod(from hint: String?, store: LedgerStore) -> String {
         guard let hint, !hint.isEmpty else { return "待确认" }
+
+        if hint.localizedCaseInsensitiveContains("微信") {
+            return store.paymentMethods.first(where: { $0.localizedCaseInsensitiveContains("微信") }) ?? "微信"
+        }
+
+        if hint.localizedCaseInsensitiveContains("支付宝") {
+            return store.paymentMethods.first(where: { $0.localizedCaseInsensitiveContains("支付宝") }) ?? "支付宝"
+        }
+
+        if ["银行卡", "信用卡", "储蓄卡", "visa", "mastercard"].contains(where: hint.localizedCaseInsensitiveContains) {
+            return store.paymentMethods.first(where: {
+                ["银行卡", "信用卡", "储蓄卡"].contains(where: $0.localizedCaseInsensitiveContains)
+            }) ?? "银行卡"
+        }
+
+        if ["现金", "cash"].contains(where: hint.localizedCaseInsensitiveContains) {
+            return store.paymentMethods.first(where: { $0.localizedCaseInsensitiveContains("现金") }) ?? "现金"
+        }
 
         if let exact = store.paymentMethods.first(where: { $0.caseInsensitiveCompare(hint) == .orderedSame }) {
             return exact
@@ -442,6 +966,47 @@ final class AutoLedgerViewModel: ObservableObject {
         return result
     }
 
+    private func normalizedLookupText(_ text: String) -> String {
+        text
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "类", with: "")
+            .replacingOccurrences(of: "消费", with: "")
+            .replacingOccurrences(of: "支出", with: "")
+            .replacingOccurrences(of: "收入", with: "")
+    }
+
+    private func presentEducationState(
+        _ educationState: AutoLedgerShortcutEducationState,
+        from source: AutoLedgerShortcutSource,
+        store: LedgerStore) {
+        reviewDraft = nil
+        errorMessage = nil
+        activeFlowSource = nil
+        store.appSettings.hasSeenShortcutInstallGuide = true
+        store.appSettings.lastShortcutEducationState = educationState
+
+        switch educationState {
+        case .install:
+            flowState = .idle
+            successMessage = "我已带你回到自动记账中心，先按“截图 -> 从截图获取图像 -> 识别账单”把快捷指令搭好。"
+        case .edit:
+            flowState = store.appSettings.hasAcknowledgedShortcutInstall ? .awaitingShortcut : .idle
+            successMessage = "这个动作必须放在“截图”之后运行。我已带你回到快捷指令结构说明。"
+        case .usage:
+            flowState = .awaitingShortcut
+            successMessage = "下一步是在支付页截图并触发快捷指令，快捷指令会直接完成识别并入账。"
+        case .troubleshoot:
+            flowState = .failed
+            successMessage = nil
+            errorMessage = "我已带你回到排障说明，请先检查快捷指令结构和截图输入。"
+        }
+
+        if source != .inAppDemo {
+            refreshShortcutStatus()
+        }
+    }
+
     private func startReviewFlow(
         imageData: Data?,
         ocrTextHint: String?,
@@ -454,6 +1019,8 @@ final class AutoLedgerViewModel: ObservableObject {
 
         let normalizedImageData = imageData?.isEmpty == false ? imageData : nil
         let normalizedOCRTextHint = ocrTextHint?.trimmingCharacters(in: .whitespacesAndNewlines)
+        lastRecognizedImageData = normalizedImageData
+        lastRecognizedOCRTextHint = normalizedOCRTextHint
 
         if normalizedImageData == nil, normalizedOCRTextHint?.isEmpty ?? true {
             throw AutoLedgerServiceError.parseFailed
@@ -474,13 +1041,72 @@ final class AutoLedgerViewModel: ObservableObject {
         let result = try await service.parseReceipt(request)
         reviewDraft = makeReviewDraft(from: result, store: store)
 
-        if result.amount == nil || result.normalizedKind == nil {
-            errorMessage = AutoLedgerServiceError.parseFailed.errorDescription
-        } else if result.confidence < 0.65 {
-            errorMessage = "识别置信度较低，建议你确认后再保存。"
+        guard result.amount != nil else {
+            throw AutoLedgerServiceError.parseFailed
         }
 
         flowState = .review
+        refreshShortcutStatus()
+    }
+
+    private func persistRecognizedDraft(store: LedgerStore) throws {
+        guard let draft = reviewDraft else {
+            throw AutoLedgerServiceError.parseFailed
+        }
+
+        guard let amount = draft.parsedAmount, amount > 0 else {
+            throw AutoLedgerServiceError.parseFailed
+        }
+
+        let categories = store.categories(for: draft.kind)
+        let category = categories.first(where: { $0.id == draft.categoryID })
+            ?? fallbackCategory(from: categories, kind: draft.kind)
+
+        let note = draft.note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let merchant = draft.merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = merchant.isEmpty ? (note.isEmpty ? category.name : note) : merchant
+
+        flowState = .confirmed
+
+        store.addEntry(
+            kind: draft.kind,
+            amount: amount,
+            category: category,
+            paymentMethod: draft.paymentMethod,
+            note: note,
+            title: title,
+            date: draft.occurredAt)
+
+        flowState = .saved
+        errorMessage = nil
+        store.appSettings.hasAcknowledgedShortcutInstall = true
+        store.appSettings.lastShortcutEducationState = .usage
+
+        var savedSummary = "已自动入账：\(LedgerFormatters.currency(amount))"
+        if !merchant.isEmpty {
+            savedSummary += " · \(merchant)"
+        } else {
+            savedSummary += " · \(category.name)"
+        }
+
+        if draft.recognizedEntryCount > 1 {
+            savedSummary += "。这次从多笔候选里优先选了最可信的一笔。"
+        } else if draft.confidence < 0.65 {
+            savedSummary += "。识别置信度偏低，如有偏差可去流水里修改。"
+        } else {
+            savedSummary += "。"
+        }
+
+        successMessage = savedSummary
+
+        Task { @MainActor in
+            await screenshotCache.remove(cachedURL)
+            cachedURL = nil
+        }
+
+        if let activeFlowSource, activeFlowSource != .inAppDemo {
+            AutoLedgerHandoffStore.markLastRunSucceeded()
+        }
         refreshShortcutStatus()
     }
 }

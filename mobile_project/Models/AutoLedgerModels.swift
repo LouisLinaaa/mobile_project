@@ -7,6 +7,78 @@ enum AutoLedgerCenterTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum AutoLedgerShortcutSetupState: String, Codable, Equatable {
+    case notInstalled
+    case installGuideShown
+    case installedAwaitingValidation
+    case ready
+    case lastRunFailed
+
+    var title: String {
+        switch self {
+        case .notInstalled:
+            "还没有添加快捷指令"
+        case .installGuideShown:
+            "已打开安装引导"
+        case .installedAwaitingValidation:
+            "已添加，待检查动作链"
+        case .ready:
+            "自动记账已就绪"
+        case .lastRunFailed:
+            "最近一次运行失败"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .notInstalled:
+            "先完成快捷指令添加，再继续编辑动作链和绑定触发方式。"
+        case .installGuideShown:
+            "系统快捷指令入口已经准备好了。结构搭好后，就可以直接触发自动识别。"
+        case .installedAwaitingValidation:
+            "建议先检查动作链是否为“截图 -> 从截图获取图像 -> 自动记账”，再做一次真实验证。"
+        case .ready:
+            "快捷指令、动作链和触发方式都已经就位，可以直接开始使用。"
+        case .lastRunFailed:
+            "先回到动作链检查和排障，再重新触发一次自动记账。"
+        }
+    }
+}
+
+enum AutoLedgerPreferredTriggerMode: String, CaseIterable, Identifiable, Codable {
+    case assistiveTouch
+    case actionButton
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .assistiveTouch:
+            "辅助触控（小白点）"
+        case .actionButton:
+            "操作按钮"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .assistiveTouch:
+            "适合大多数机型，单击/双击/长按都能绑定。"
+        case .actionButton:
+            "适合支持操作按钮的机型，按一下即可触发。"
+        }
+    }
+}
+
+enum AutoLedgerShortcutEducationState: String, CaseIterable, Identifiable, Codable {
+    case install
+    case edit
+    case usage
+    case troubleshoot
+
+    var id: String { rawValue }
+}
+
 enum AutoLedgerFlowState: String {
     case idle
     case awaitingShortcut
@@ -42,6 +114,7 @@ struct AutoLedgerParseResult: Codable {
     let rawText: String
     let confidence: Double
     let reason: String
+    let recognizedEntryCount: Int?
 
     var normalizedKind: LedgerKind? {
         guard let kind else { return nil }
@@ -82,6 +155,7 @@ struct AutoLedgerReviewDraft: Identifiable {
     var rawText: String
     var confidence: Double
     var reason: String
+    var recognizedEntryCount: Int
 
     var parsedAmount: Double? {
         var cleaned = amountText
@@ -129,7 +203,9 @@ struct AutoLedgerShortcutStatusPresentation {
 }
 
 struct AutoLedgerGatewayRequestBody: Encodable {
-    let prompt: String
+    let model: String
+    let systemPrompt: String
+    let userPrompt: String
     let rawOCR: String?
     let imageBase64: String?
 }

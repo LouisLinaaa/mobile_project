@@ -403,14 +403,14 @@ struct HomeView: View {
                         .foregroundStyle(Color.ledgerText)
 
                     Text(store.appSettings
-                        .showRecordImages ? "截图识别 -> AI 结构化 -> 人工确认后入账" : "截图识别 -> AI 结构化（图片仅用于解析，不回显）")
+                        .showRecordImages ? "截图识别 -> 大模型解析 -> 自动入账" : "截图识别 -> 大模型解析（图片仅用于解析，不回显）")
                         .font(.system(size: 13, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.ledgerMuted)
                         .fixedSize(horizontal: false, vertical: true)
 
                     HStack(spacing: 6) {
                         Image(systemName: "sparkles")
-                        Text(store.appSettings.showLocation ? "支持快捷指令触发，审核时展示地点字段" : "支持快捷指令触发与审核保存")
+                        Text(store.appSettings.showLocation ? "支持快捷指令触发，自动入账后保留地点能力" : "支持快捷指令触发与自动入账")
                     }
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.ledgerAccent)
