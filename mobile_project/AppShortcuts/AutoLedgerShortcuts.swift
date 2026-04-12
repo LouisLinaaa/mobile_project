@@ -39,7 +39,7 @@ enum AutoLedgerShortcutSourceIntentValue: String, AppEnum {
             .shortcutsApp: "快捷指令",
             .assistiveTouch: "辅助触控",
             .actionButton: "操作按钮",
-            .shareSheet: "分享扩展",
+            .shareSheet: "分享扩展"
         ]
     }
 
@@ -94,7 +94,8 @@ enum AutoLedgerHandoffStore {
     }
 
     private static var incomingDirectoryURL: URL {
-        let baseURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: LedgerWidgetShared.appGroupID)
+        let baseURL = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: LedgerWidgetShared.appGroupID)
             ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
         let directoryURL = baseURL.appendingPathComponent(incomingFolderName, isDirectory: true)
@@ -109,8 +110,7 @@ enum AutoLedgerHandoffStore {
     static func stageLaunch(
         files: [IntentFile],
         ocrTextHint: String?,
-        source: AutoLedgerShortcutSource
-    ) async throws -> AutoLedgerLaunchPayload {
+        source: AutoLedgerShortcutSource) async throws -> AutoLedgerLaunchPayload {
         var storedFilename: String?
 
         if let file = files.first {
@@ -122,8 +122,7 @@ enum AutoLedgerHandoffStore {
             source: source,
             imageFilename: storedFilename,
             ocrTextHint: ocrTextHint?.trimmingCharacters(in: .whitespacesAndNewlines),
-            createdAt: Date()
-        )
+            createdAt: Date())
 
         savePayload(payload)
 
@@ -226,14 +225,12 @@ struct StartAutoLedgerIntent: AppIntent {
 
     @Parameter(
         title: "账单截图",
-        inputConnectionBehavior: .connectToPreviousIntentResult
-    )
+        inputConnectionBehavior: .connectToPreviousIntentResult)
     var files: [IntentFile]
 
     @Parameter(
         title: "OCR 文本",
-        inputConnectionBehavior: .connectToPreviousIntentResult
-    )
+        inputConnectionBehavior: .connectToPreviousIntentResult)
     var ocrTextHint: String?
 
     @Parameter(title: "触发来源")
@@ -246,11 +243,15 @@ struct StartAutoLedgerIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
+        let normalizedOCRTextHint = ocrTextHint?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !files.isEmpty || !(normalizedOCRTextHint?.isEmpty ?? true) else {
+            return .result(dialog: "请先提供账单截图或 OCR 文本，再运行自动记账。")
+        }
+
         _ = try await AutoLedgerHandoffStore.stageLaunch(
             files: files,
-            ocrTextHint: ocrTextHint,
-            source: source.domainValue
-        )
+            ocrTextHint: normalizedOCRTextHint,
+            source: source.domainValue)
         return .result(dialog: "已打开自动记账审核页。")
     }
 }
@@ -276,20 +277,18 @@ struct AutoLedgerShortcutsProvider: AppShortcutsProvider {
             phrases: [
                 "用 \(.applicationName) 自动记账",
                 "在 \(.applicationName) 里自动记账",
-                "让 \(.applicationName) 识别账单截图",
+                "让 \(.applicationName) 识别账单截图"
             ],
             shortTitle: "自动记账",
-            systemImageName: "doc.text.viewfinder"
-        )
+            systemImageName: "doc.text.viewfinder")
 
         AppShortcut(
             intent: OpenAutoLedgerCenterIntent(),
             phrases: [
                 "打开 \(.applicationName) 自动记账中心",
-                "在 \(.applicationName) 里打开自动记账",
+                "在 \(.applicationName) 里打开自动记账"
             ],
             shortTitle: "自动记账中心",
-            systemImageName: "swirl.circle"
-        )
+            systemImageName: "swirl.circle")
     }
 }
