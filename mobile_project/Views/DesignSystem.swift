@@ -144,4 +144,8 @@ enum LedgerFormatters {
     static func bookDate(_ date: Date) -> String {
         bookDateFormatter.string(from: date)
     }
+
+    static func shortTimestamp(_ date: Date) -> String {
+        "\(bookDate(date)) \(entryTime(for: date))"
+    }
 }

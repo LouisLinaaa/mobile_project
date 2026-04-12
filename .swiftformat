@@ -21,4 +21,4 @@
 --octalgrouping 4,8
 --fractiongrouping disabled
 --exponentgrouping disabled
---disable docComments,wrapPropertyBodies,blankLinesBetweenScopes,redundantMemberwiseInit,unusedArguments,hoistPatternLet,andOperator
+--disable docComments,wrapPropertyBodies,blankLinesBetweenScopes,redundantMemberwiseInit,unusedArguments,hoistPatternLet,andOperator,redundantSelf,redundantSendable,enumNamespaces,elseOnSameLine,wrapMultilineStatementBraces

@@ -4,7 +4,7 @@
 
 - `pre-commit`: 检查暂存的 `.swift` 文件格式
   - 必查: staged 内容中的 Tab 缩进、行尾空格
-  - 可选增强: 若本机安装 `swiftformat` 且仓库存在 `.swiftformat`，自动对 staged 内容执行 `swiftformat --lint`
+  - 可选增强: 若本机安装 `swiftformat`，自动按仓库根目录的 `.swiftformat` 对 staged 内容执行 `swiftformat --lint`
   - 若未配置 `.swiftformat`，Hook 会明确提示并跳过默认规则 lint，避免历史风格差异阻塞提交
 - `pre-push`: 按改动范围执行 iOS 构建检查（`xcodebuild build`）
   - 仅当推送内容涉及 App、Widget 或 Xcode 工程文件时才会执行
@@ -33,10 +33,15 @@ brew install swiftformat
 建议同时添加：
 
 ```bash
-echo "5.0" > .swift-version
+echo "5.7" > .swift-version
 ```
 
 这样 SwiftFormat 会按工程声明的 Swift 版本工作，避免默认版本推断带来的噪音。
+
+项目已补充：
+
+- `.swift-version`: 统一 Swift 版本提示，避免 `swiftformat` 使用默认猜测
+- `.swiftformat`: 固定本仓库使用的格式规则，避免误用默认规则导致无关拦截
 
 ## 临时跳过
 

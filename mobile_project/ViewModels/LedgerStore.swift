@@ -4,6 +4,8 @@ import SwiftUI
 final class LedgerStore: ObservableObject {
     @Published var isBalanceVisible = true
     @Published var isQuickAddPresented = false
+    @Published private(set) var autoLedgerPendingLaunch: AutoLedgerLaunchPayload?
+    @Published private(set) var autoLedgerShortcutStatus = AutoLedgerHandoffStore.loadStatus()
     @Published var appSettings: AppSettings {
         didSet {
             guard appSettings != oldValue else { return }
@@ -105,6 +107,7 @@ final class LedgerStore: ObservableObject {
         configureICloudSync()
         refreshICloudBackupSummary()
         syncWidgetSnapshot()
+        refreshAutoLedgerShortcutState()
     }
 
     deinit {
@@ -297,6 +300,10 @@ final class LedgerStore: ObservableObject {
         }
     }
 
+    var hasPendingAutoLedgerLaunch: Bool {
+        autoLedgerPendingLaunch != nil
+    }
+
     func categories(for kind: LedgerKind) -> [LedgerCategory] {
         switch kind {
         case .expense:
@@ -361,6 +368,18 @@ final class LedgerStore: ObservableObject {
             date: Date())
     }
 
+    func refreshAutoLedgerShortcutState() {
+        autoLedgerPendingLaunch = AutoLedgerHandoffStore.peekPendingLaunch()
+        autoLedgerShortcutStatus = AutoLedgerHandoffStore.loadStatus()
+    }
+
+    func consumeAutoLedgerPendingLaunch() -> AutoLedgerLaunchPayload? {
+        let payload = AutoLedgerHandoffStore.consumePendingLaunch()
+        autoLedgerPendingLaunch = nil
+        autoLedgerShortcutStatus = AutoLedgerHandoffStore.loadStatus()
+        return payload
+    }
+
     func addEntry(
         kind: LedgerKind,
         amount: Double,
@@ -368,8 +387,7 @@ final class LedgerStore: ObservableObject {
         paymentMethod: String,
         note: String,
         title: String,
-        date: Date)
-    {
+        date: Date) {
         let entry = LedgerEntry(
             bookID: currentBook.id,
             title: title,
@@ -490,8 +508,7 @@ final class LedgerStore: ObservableObject {
             } else if !settings.pushDailyLedger &&
                 !settings.pushBudgetReminder &&
                 !settings.pushFeatureRecommendation &&
-                !settings.pushBillReview
-            {
+                !settings.pushBillReview {
                 settings.pushDailyLedger = true
                 settings.pushBudgetReminder = true
                 settings.pushFeatureRecommendation = true
@@ -504,8 +521,7 @@ final class LedgerStore: ObservableObject {
         dailyLedger: Bool? = nil,
         budgetReminder: Bool? = nil,
         featureRecommendation: Bool? = nil,
-        billReview: Bool? = nil)
-    {
+        billReview: Bool? = nil) {
         updateSettings { settings in
             if let dailyLedger {
                 settings.pushDailyLedger = dailyLedger
@@ -664,8 +680,7 @@ final class LedgerStore: ObservableObject {
         kind: LedgerKind,
         name: String,
         icon: String,
-        tintStyle: LedgerTintStyle)
-    {
+        tintStyle: LedgerTintStyle) {
         guard let index = categorySchemes.firstIndex(where: { $0.id == schemeID }) else { return }
 
         var scheme = categorySchemes[index]
@@ -756,8 +771,7 @@ final class LedgerStore: ObservableObject {
         _ budgets: [LedgerBookBudget],
         legacyBudgetLimit: Double?,
         books: [LedgerBook],
-        fallbackBookID: UUID) -> [LedgerBookBudget]
-    {
+        fallbackBookID: UUID) -> [LedgerBookBudget] {
         let validBookIDs = Set(books.map(\.id))
         let sanitized = budgets
             .filter { validBookIDs.contains($0.bookID) && $0.monthlyLimit > 0 }
@@ -777,8 +791,7 @@ final class LedgerStore: ObservableObject {
 
     private func sanitizedCategoryBudgets(
         _ budgets: [LedgerCategoryBudget],
-        books: [LedgerBook]) -> [LedgerCategoryBudget]
-    {
+        books: [LedgerBook]) -> [LedgerCategoryBudget] {
         let validBookIDs = Set(books.map(\.id))
         let validCategoryIDs = Set((allCategories(for: .expense) + allCategories(for: .income)).map(\.id))
 
@@ -793,11 +806,10 @@ final class LedgerStore: ObservableObject {
         let startDay = min(max(appSettings.monthStartDay, 1), 28)
         let day = calendar.component(.day, from: date)
 
-        let anchorDate: Date
-        if day < startDay {
-            anchorDate = calendar.date(byAdding: .month, value: -1, to: date) ?? date
+        let anchorDate: Date = if day < startDay {
+            calendar.date(byAdding: .month, value: -1, to: date) ?? date
         } else {
-            anchorDate = date
+            date
         }
 
         var components = calendar.dateComponents([.year, .month], from: anchorDate)
@@ -857,19 +869,19 @@ final class LedgerStore: ObservableObject {
     private func hexColor(for style: LedgerTintStyle) -> String {
         switch style {
         case .accent:
-            return "#4F81FA"
+            "#4F81FA"
         case .gold:
-            return "#F5C35A"
+            "#F5C35A"
         case .mint:
-            return "#75CAC2"
+            "#75CAC2"
         case .lavender:
-            return "#AAA1F7"
+            "#AAA1F7"
         case .coral:
-            return "#F2A193"
+            "#F2A193"
         case .expense:
-            return "#F57A61"
+            "#F57A61"
         case .income:
-            return "#4AAC84"
+            "#4AAC84"
         }
     }
 
@@ -946,12 +958,11 @@ final class LedgerStore: ObservableObject {
         iCloudObserver = NotificationCenter.default.addObserver(
             forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
             object: NSUbiquitousKeyValueStore.default,
-            queue: .main)
-        { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.refreshICloudBackupSummary()
+            queue: .main) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.refreshICloudBackupSummary()
+                }
             }
-        }
         NSUbiquitousKeyValueStore.default.synchronize()
     }
 
@@ -1108,8 +1119,7 @@ final class LedgerStore: ObservableObject {
             selectedBookID: UUID,
             accounts: [LedgerAccount],
             categorySchemes: [LedgerCategoryScheme],
-            selectedCategorySchemeID: UUID)
-        {
+            selectedCategorySchemeID: UUID) {
             self.appSettings = appSettings
             self.budgetLimit = budgetLimit
             self.bookBudgets = bookBudgets
@@ -1182,8 +1192,7 @@ final class LedgerStore: ObservableObject {
             selectedBookID: UUID,
             accounts: [LedgerAccount],
             categorySchemes: [LedgerCategoryScheme],
-            selectedCategorySchemeID: UUID)
-        {
+            selectedCategorySchemeID: UUID) {
             self.generatedAt = generatedAt
             self.backupVersion = backupVersion
             self.appVersion = appVersion

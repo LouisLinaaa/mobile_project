@@ -1324,7 +1324,7 @@ private struct MetricBlock: View {
     let title: String
     let value: Double
     let valueColor: Color
-    var background: Color = Color.white.opacity(0.18)
+    var background: Color = .white.opacity(0.18)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1441,27 +1441,25 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             SettingSelectRow(
                 title: "月统计起始日",
-                value: store.appSettings.monthStartDayLabel)
-            {
-                ForEach(monthStartDayOptions, id: \.self) { day in
-                    Button("每月\(day)日") {
-                        store.setMonthStartDay(day)
+                value: store.appSettings.monthStartDayLabel) {
+                    ForEach(monthStartDayOptions, id: \.self) { day in
+                        Button("每月\(day)日") {
+                            store.setMonthStartDay(day)
+                        }
                     }
                 }
-            }
 
             Divider().padding(.leading, SettingsLayout.dividerLeading)
 
             SettingSelectRow(
                 title: "助手回复风格",
-                value: store.appSettings.assistantReplyStyle.title)
-            {
-                ForEach(AssistantReplyStyle.allCases) { style in
-                    Button(style.title) {
-                        store.setAssistantReplyStyle(style)
+                value: store.appSettings.assistantReplyStyle.title) {
+                    ForEach(AssistantReplyStyle.allCases) { style in
+                        Button(style.title) {
+                            store.setAssistantReplyStyle(style)
+                        }
                     }
                 }
-            }
 
             Divider().padding(.leading, SettingsLayout.dividerLeading)
 
@@ -1691,20 +1689,18 @@ struct BackupSettingsView: View {
                 BackupActionButton(
                     title: "立即备份",
                     systemImage: "arrow.up.circle.fill",
-                    tint: .ledgerAccent)
-                {
-                    statusMessage = store.createICloudBackupSnapshot() ? "已将当前数据写入 iCloud 备份。" : "备份失败，请稍后重试。"
-                }
-                .disabled(!store.isICloudBackupAvailable)
+                    tint: .ledgerAccent) {
+                        statusMessage = store.createICloudBackupSnapshot() ? "已将当前数据写入 iCloud 备份。" : "备份失败，请稍后重试。"
+                    }
+                    .disabled(!store.isICloudBackupAvailable)
 
                 BackupActionButton(
                     title: "从云端恢复",
                     systemImage: "arrow.down.circle.fill",
-                    tint: .ledgerMint)
-                {
-                    isRestoreAlertPresented = true
-                }
-                .disabled(summary == nil)
+                    tint: .ledgerMint) {
+                        isRestoreAlertPresented = true
+                    }
+                    .disabled(summary == nil)
             }
         }
         .padding(18)

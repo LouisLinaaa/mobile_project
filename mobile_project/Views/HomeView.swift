@@ -73,6 +73,10 @@ struct HomeView: View {
             Text("\(highlightedFeature ?? "这个入口") 先保留了结构和入口，后续我们可以继续把它做成完整功能。")
         }
         .onOpenURL(perform: handleWidgetDeepLink(_:))
+        .onAppear(perform: openPendingAutoLedgerIfNeeded)
+        .onChange(of: store.autoLedgerPendingLaunch) { _, _ in
+            openPendingAutoLedgerIfNeeded()
+        }
     }
 
     private var mainContent: some View {
@@ -674,11 +678,19 @@ struct HomeView: View {
             openScreen(.categories)
         case "auto-ledger":
             openScreen(.autoLedgerCenter)
+        case "auto-ledger-review":
+            store.refreshAutoLedgerShortcutState()
+            openScreen(.autoLedgerCenter)
         case "widgets":
             openScreen(.widgets)
         default:
             break
         }
+    }
+
+    private func openPendingAutoLedgerIfNeeded() {
+        guard store.hasPendingAutoLedgerLaunch else { return }
+        openScreen(.autoLedgerCenter)
     }
 }
 

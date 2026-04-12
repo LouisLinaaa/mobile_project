@@ -20,6 +20,7 @@
 		A0000000000000000000000B /* AutoLedgerCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001B /* AutoLedgerCenterView.swift */; };
 		A0000000000000000000000C /* WidgetCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001C /* WidgetCenterView.swift */; };
 		A0000000000000000000000D /* BudgetManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001D /* BudgetManagementView.swift */; };
+		A0000000000000000000000E /* AutoLedgerShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001E /* AutoLedgerShortcuts.swift */; };
 		A00000000000000000000064 /* WidgetSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000006A /* WidgetSnapshotStore.swift */; };
 		A00000000000000000000065 /* LedgerWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000006C /* LedgerWidgetsBundle.swift */; };
 		A00000000000000000000066 /* mobile_project_widgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A0000000000000000000006B /* mobile_project_widgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -64,6 +65,7 @@
 		A0000000000000000000001B /* AutoLedgerCenterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoLedgerCenterView.swift; sourceTree = "<group>"; };
 		A0000000000000000000001C /* WidgetCenterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetCenterView.swift; sourceTree = "<group>"; };
 		A0000000000000000000001D /* BudgetManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudgetManagementView.swift; sourceTree = "<group>"; };
+		A0000000000000000000001E /* AutoLedgerShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoLedgerShortcuts.swift; sourceTree = "<group>"; };
 		A0000000000000000000006A /* WidgetSnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshotStore.swift; sourceTree = "<group>"; };
 		A0000000000000000000006B /* mobile_project_widgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = mobile_project_widgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A0000000000000000000006C /* LedgerWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LedgerWidgetsBundle.swift; sourceTree = "<group>"; };
@@ -107,6 +109,7 @@
 				A0000000000000000000006F /* Info.plist */,
 				A0000000000000000000006D /* mobile_project.entitlements */,
 				A00000000000000000000033 /* Models */,
+				A00000000000000000000036 /* AppShortcuts */,
 				A00000000000000000000034 /* ViewModels */,
 				A00000000000000000000035 /* Views */,
 				A00000000000000000000075 /* WidgetSupport */,
@@ -154,6 +157,14 @@
 				A0000000000000000000001D /* BudgetManagementView.swift */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000036 /* AppShortcuts */ = {
+			isa = PBXGroup;
+			children = (
+				A0000000000000000000001E /* AutoLedgerShortcuts.swift */,
+			);
+			path = AppShortcuts;
 			sourceTree = "<group>";
 		};
 		A00000000000000000000075 /* WidgetSupport */ = {
@@ -285,6 +296,7 @@
 				A0000000000000000000000B /* AutoLedgerCenterView.swift in Sources */,
 				A0000000000000000000000C /* WidgetCenterView.swift in Sources */,
 				A0000000000000000000000D /* BudgetManagementView.swift in Sources */,
+				A0000000000000000000000E /* AutoLedgerShortcuts.swift in Sources */,
 				A00000000000000000000064 /* WidgetSnapshotStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

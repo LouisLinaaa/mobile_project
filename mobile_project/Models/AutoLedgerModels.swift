@@ -26,7 +26,7 @@ struct AutoLedgerParseContext {
 }
 
 struct AutoLedgerParseRequest {
-    let imageData: Data
+    let imageData: Data?
     let context: AutoLedgerParseContext
     let ocrTextHint: String?
 }
@@ -122,10 +122,16 @@ struct AutoLedgerReviewDraft: Identifiable {
     }
 }
 
+struct AutoLedgerShortcutStatusPresentation {
+    let title: String
+    let detail: String
+    let tint: String
+}
+
 struct AutoLedgerGatewayRequestBody: Encodable {
     let prompt: String
     let rawOCR: String?
-    let imageBase64: String
+    let imageBase64: String?
 }
 
 struct AutoLedgerGatewayResponse: Decodable {

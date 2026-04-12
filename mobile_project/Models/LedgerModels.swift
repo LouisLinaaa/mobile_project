@@ -99,8 +99,7 @@ struct LedgerBook: Identifiable, Hashable, Codable {
         note: String,
         createdAt: Date,
         icon: String,
-        tintStyle: LedgerTintStyle)
-    {
+        tintStyle: LedgerTintStyle) {
         self.id = id
         self.name = name
         self.note = note
@@ -198,8 +197,7 @@ struct LedgerAccount: Identifiable, Hashable, Codable {
         icon: String,
         tintStyle: LedgerTintStyle,
         group: LedgerAccountGroup,
-        balance: Double)
-    {
+        balance: Double) {
         self.id = id
         self.templateID = templateID
         self.name = name
@@ -224,8 +222,7 @@ struct LedgerCategoryScheme: Identifiable, Hashable, Codable {
         name: String,
         note: String,
         expenseCategories: [LedgerCategory],
-        incomeCategories: [LedgerCategory])
-    {
+        incomeCategories: [LedgerCategory]) {
         self.id = id
         self.name = name
         self.note = note
@@ -254,8 +251,7 @@ struct LedgerEntry: Identifiable, Codable {
         category: LedgerCategory,
         paymentMethod: String,
         note: String,
-        date: Date)
-    {
+        date: Date) {
         self.id = id
         self.bookID = bookID
         self.title = title
@@ -278,8 +274,7 @@ struct LedgerBookBudget: Identifiable, Hashable, Codable {
         id: UUID = UUID(),
         bookID: UUID,
         monthlyLimit: Double,
-        createdAt: Date = Date())
-    {
+        createdAt: Date = Date()) {
         self.id = id
         self.bookID = bookID
         self.monthlyLimit = monthlyLimit
@@ -299,8 +294,7 @@ struct LedgerCategoryBudget: Identifiable, Hashable, Codable {
         bookID: UUID,
         categoryID: String,
         monthlyLimit: Double,
-        createdAt: Date = Date())
-    {
+        createdAt: Date = Date()) {
         self.id = id
         self.bookID = bookID
         self.categoryID = categoryID

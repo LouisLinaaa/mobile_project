@@ -17,11 +17,11 @@ enum AutoLedgerServiceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
-            return "服务返回数据格式不正确，请稍后重试。"
+            "服务返回数据格式不正确，请稍后重试。"
         case .networkFailure(let status):
-            return "网络请求失败（\(status)），请检查后重试。"
+            "网络请求失败（\(status)），请检查后重试。"
         case .parseFailed:
-            return "识别结果缺少关键字段，请手动补全后保存。"
+            "识别结果缺少关键字段，请手动补全后保存。"
         }
     }
 }
@@ -30,9 +30,9 @@ struct AutoLedgerServiceFactory {
     static func make(environment: AutoLedgerServiceEnvironment = .mock) -> any AutoLedgerServiceProtocol {
         switch environment {
         case .mock:
-            return MockAutoLedgerService()
+            MockAutoLedgerService()
         case .gateway(let baseURL, let apiKey):
-            return GatewayAutoLedgerService(baseURL: baseURL, apiKey: apiKey)
+            GatewayAutoLedgerService(baseURL: baseURL, apiKey: apiKey)
         }
     }
 }
@@ -56,8 +56,7 @@ struct MockAutoLedgerService: AutoLedgerServiceProtocol {
                 note: "自动识别：商品退货退款",
                 rawText: "商户: 平台退款 金额:36.80 支付方式:电子支付",
                 confidence: 0.85,
-                reason: "识别到退款关键词和正向金额"
-            )
+                reason: "识别到退款关键词和正向金额")
         }
 
         return AutoLedgerParseResult(
@@ -70,8 +69,7 @@ struct MockAutoLedgerService: AutoLedgerServiceProtocol {
             note: "自动识别：晚餐补给",
             rawText: "商户: 便利店 金额:18.50 支付方式:电子支付",
             confidence: 0.81,
-            reason: "识别到消费场景和支付方式"
-        )
+            reason: "识别到消费场景和支付方式")
     }
 }
 
@@ -96,8 +94,7 @@ final class GatewayAutoLedgerService: AutoLedgerServiceProtocol {
         let payload = AutoLedgerGatewayRequestBody(
             prompt: AutoLedgerPromptTemplate.userPrompt(for: request),
             rawOCR: request.ocrTextHint,
-            imageBase64: request.imageData.base64EncodedString()
-        )
+            imageBase64: request.imageData?.base64EncodedString())
         urlRequest.httpBody = try JSONEncoder().encode(payload)
 
         let (data, response) = try await URLSession.shared.data(for: urlRequest)
@@ -117,22 +114,22 @@ final class GatewayAutoLedgerService: AutoLedgerServiceProtocol {
 
 enum AutoLedgerPromptTemplate {
     static let systemPrompt = """
-你是记账结构化助手。请把账单信息提取为严格 JSON，字段必须包含：amount, kind, category, paymentMethod, time, merchant, note, rawText, confidence, reason。
-kind 仅允许 expense 或 income。无法确定时也要给出最可能值，并在 reason 说明。
-"""
+    你是记账结构化助手。请把账单信息提取为严格 JSON，字段必须包含：amount, kind, category, paymentMethod, time, merchant, note, rawText, confidence, reason。
+    kind 仅允许 expense 或 income。无法确定时也要给出最可能值，并在 reason 说明。
+    """
 
     static func userPrompt(for request: AutoLedgerParseRequest) -> String {
         """
-\(systemPrompt)
+        \(systemPrompt)
 
-上下文：
-- currency: \(request.context.currencyCode)
-- locale: \(request.context.localeIdentifier)
-- categoryCandidates: \(request.context.categoryCandidates.joined(separator: ", "))
-- paymentMethodCandidates: \(request.context.paymentMethodCandidates.joined(separator: ", "))
+        上下文：
+        - currency: \(request.context.currencyCode)
+        - locale: \(request.context.localeIdentifier)
+        - categoryCandidates: \(request.context.categoryCandidates.joined(separator: ", "))
+        - paymentMethodCandidates: \(request.context.paymentMethodCandidates.joined(separator: ", "))
 
-请基于 OCR 或图像内容输出严格 JSON。
-"""
+        请基于 OCR 或图像内容输出严格 JSON。
+        """
     }
 }
 
@@ -164,7 +161,9 @@ actor AutoLedgerScreenshotCache {
     }
 
     func purgeExpired() throws {
-        let urls = try fileManager.contentsOfDirectory(at: folderURL, includingPropertiesForKeys: [.contentModificationDateKey])
+        let urls = try fileManager.contentsOfDirectory(
+            at: folderURL,
+            includingPropertiesForKeys: [.contentModificationDateKey])
         let now = Date()
 
         for url in urls {
@@ -194,20 +193,22 @@ final class AutoLedgerViewModel: ObservableObject {
     @Published var isActionButtonExpanded = false
     @Published var isBackTapExpanded = false
     @Published var isControlCenterExpanded = false
+    @Published var shortcutStatus: AutoLedgerShortcutRunStatus = AutoLedgerHandoffStore.loadStatus()
 
     private let service: any AutoLedgerServiceProtocol
     private let screenshotCache: AutoLedgerScreenshotCache
     private var cachedURL: URL?
+    private var activeFlowSource: AutoLedgerShortcutSource?
 
     init(
         service: any AutoLedgerServiceProtocol = AutoLedgerServiceFactory.make(),
-        screenshotCache: AutoLedgerScreenshotCache = .shared
-    ) {
+        screenshotCache: AutoLedgerScreenshotCache = .shared) {
         self.service = service
         self.screenshotCache = screenshotCache
     }
 
     func beginShortcutGuide() {
+        refreshShortcutStatus()
         errorMessage = nil
         successMessage = nil
         flowState = .awaitingShortcut
@@ -218,38 +219,45 @@ final class AutoLedgerViewModel: ObservableObject {
         reviewDraft = nil
         errorMessage = nil
         successMessage = nil
+        activeFlowSource = nil
     }
 
     func triggerMockShortcutParse(store: LedgerStore) async {
-        errorMessage = nil
-        successMessage = nil
-        flowState = .uploading
-
         do {
             let fakeReceiptText = "商户:便利店 金额:18.50 支付方式:电子支付"
             let imageData = Data(fakeReceiptText.utf8)
-            cachedURL = try await screenshotCache.save(imageData)
-
-            flowState = .parsing
-            let request = AutoLedgerParseRequest(
+            try await startReviewFlow(
                 imageData: imageData,
-                context: makeContext(from: store),
-                ocrTextHint: fakeReceiptText
-            )
-
-            let result = try await service.parseReceipt(request)
-            reviewDraft = makeReviewDraft(from: result, store: store)
-
-            if result.amount == nil || result.normalizedKind == nil {
-                errorMessage = AutoLedgerServiceError.parseFailed.errorDescription
-            } else if result.confidence < 0.65 {
-                errorMessage = "识别置信度较低，建议你确认后再保存。"
-            }
-
-            flowState = .review
+                ocrTextHint: fakeReceiptText,
+                source: .inAppDemo,
+                store: store)
         } catch {
             flowState = .failed
             errorMessage = error.localizedDescription
+            AutoLedgerHandoffStore.markLastRunFailed(error.localizedDescription)
+            refreshShortcutStatus()
+        }
+    }
+
+    func processPendingLaunchIfNeeded(store: LedgerStore) async {
+        guard let payload = store.consumeAutoLedgerPendingLaunch() else {
+            refreshShortcutStatus()
+            return
+        }
+
+        do {
+            let imageData = try AutoLedgerHandoffStore.consumeImageData(for: payload)
+            try await startReviewFlow(
+                imageData: imageData,
+                ocrTextHint: payload.ocrTextHint,
+                source: payload.source,
+                store: store)
+            successMessage = "已接收来自\(payload.source.displayName)的触发，确认后即可入账。"
+        } catch {
+            flowState = .failed
+            errorMessage = error.localizedDescription
+            AutoLedgerHandoffStore.markLastRunFailed(error.localizedDescription)
+            refreshShortcutStatus()
         }
     }
 
@@ -303,8 +311,7 @@ final class AutoLedgerViewModel: ObservableObject {
             paymentMethod: draft.paymentMethod,
             note: note,
             title: title,
-            date: draft.occurredAt
-        )
+            date: draft.occurredAt)
 
         flowState = .saved
         successMessage = "已自动入账，可以在首页今日流水查看。"
@@ -314,6 +321,43 @@ final class AutoLedgerViewModel: ObservableObject {
             await screenshotCache.remove(cachedURL)
             cachedURL = nil
         }
+        if let activeFlowSource, activeFlowSource != .inAppDemo {
+            AutoLedgerHandoffStore.markLastRunSucceeded()
+        }
+        refreshShortcutStatus()
+    }
+
+    func refreshShortcutStatus() {
+        shortcutStatus = AutoLedgerHandoffStore.loadStatus()
+    }
+
+    var shortcutStatusPresentation: AutoLedgerShortcutStatusPresentation {
+        if let lastErrorMessage = shortcutStatus.lastErrorMessage, !lastErrorMessage.isEmpty {
+            return AutoLedgerShortcutStatusPresentation(
+                title: "最近一次触发失败",
+                detail: lastErrorMessage,
+                tint: "error")
+        }
+
+        if let lastTriggeredAt = shortcutStatus.lastTriggeredAt,
+           let source = shortcutStatus.lastSource {
+            let completionText = if let lastCompletedAt = shortcutStatus.lastCompletedAt,
+                                    lastCompletedAt >= lastTriggeredAt {
+                "，已完成一次审核入账"
+            } else {
+                "，等待你在 App 内确认"
+            }
+
+            return AutoLedgerShortcutStatusPresentation(
+                title: "已检测到快捷动作可用",
+                detail: "\(LedgerFormatters.shortTimestamp(lastTriggeredAt)) 通过\(source.displayName)触发\(completionText)",
+                tint: "success")
+        }
+
+        return AutoLedgerShortcutStatusPresentation(
+            title: "还没有快捷动作记录",
+            detail: "点右侧系统按钮添加后，就可以把“自动记账”绑定到辅助触控或操作按钮。",
+            tint: "idle")
     }
 
     private func makeContext(from store: LedgerStore) -> AutoLedgerParseContext {
@@ -325,8 +369,7 @@ final class AutoLedgerViewModel: ObservableObject {
             currencyCode: "CNY",
             localeIdentifier: LedgerFormatters.locale.identifier,
             categoryCandidates: categories,
-            paymentMethodCandidates: store.paymentMethods
-        )
+            paymentMethodCandidates: store.paymentMethods)
     }
 
     private func makeReviewDraft(from result: AutoLedgerParseResult, store: LedgerStore) -> AutoLedgerReviewDraft {
@@ -346,8 +389,7 @@ final class AutoLedgerViewModel: ObservableObject {
             note: result.note ?? "",
             rawText: result.rawText,
             confidence: result.confidence,
-            reason: result.reason
-        )
+            reason: result.reason)
     }
 
     private func mapCategory(from hint: String?, categories: [LedgerCategory], kind: LedgerKind) -> LedgerCategory {
@@ -398,5 +440,47 @@ final class AutoLedgerViewModel: ObservableObject {
         }
 
         return result
+    }
+
+    private func startReviewFlow(
+        imageData: Data?,
+        ocrTextHint: String?,
+        source: AutoLedgerShortcutSource,
+        store: LedgerStore) async throws {
+        errorMessage = nil
+        successMessage = nil
+        flowState = .uploading
+        activeFlowSource = source
+
+        let normalizedImageData = imageData?.isEmpty == false ? imageData : nil
+        let normalizedOCRTextHint = ocrTextHint?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if normalizedImageData == nil, normalizedOCRTextHint?.isEmpty ?? true {
+            throw AutoLedgerServiceError.parseFailed
+        }
+
+        if let normalizedImageData {
+            cachedURL = try await screenshotCache.save(normalizedImageData)
+        } else {
+            cachedURL = nil
+        }
+
+        flowState = .parsing
+        let request = AutoLedgerParseRequest(
+            imageData: normalizedImageData,
+            context: makeContext(from: store),
+            ocrTextHint: normalizedOCRTextHint)
+
+        let result = try await service.parseReceipt(request)
+        reviewDraft = makeReviewDraft(from: result, store: store)
+
+        if result.amount == nil || result.normalizedKind == nil {
+            errorMessage = AutoLedgerServiceError.parseFailed.errorDescription
+        } else if result.confidence < 0.65 {
+            errorMessage = "识别置信度较低，建议你确认后再保存。"
+        }
+
+        flowState = .review
+        refreshShortcutStatus()
     }
 }

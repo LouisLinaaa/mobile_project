@@ -43,6 +43,11 @@ if command -v swiftformat >/dev/null 2>&1; then
 fi
 
 has_error=0
+swiftformat_available=0
+
+if command -v swiftformat >/dev/null 2>&1; then
+  swiftformat_available=1
+fi
 
 while IFS= read -r file; do
   [ -n "$file" ] || continue
@@ -67,7 +72,7 @@ while IFS= read -r file; do
   fi
 
   if [ "$should_run_swiftformat" -eq 1 ]; then
-    if ! swiftformat --lint "${swiftformat_args[@]}" "$staged_copy"; then
+    if ! swiftformat --lint --cache ignore "${swiftformat_args[@]}" "$staged_copy"; then
       has_error=1
     fi
   fi
@@ -75,7 +80,7 @@ done <<< "$STAGED_SWIFT_FILES"
 
 if [ "$has_error" -ne 0 ]; then
   echo "[pre-commit] 格式检查失败。"
-  if ! command -v swiftformat >/dev/null 2>&1; then
+  if [ "$swiftformat_available" -ne 1 ]; then
     echo "[pre-commit] 可选增强: 安装 swiftformat 后将启用更完整检查。"
     echo "[pre-commit] 安装命令: brew install swiftformat"
   elif [ ! -f "$SWIFTFORMAT_CONFIG" ]; then

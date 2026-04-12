@@ -676,8 +676,7 @@ private struct BudgetAmountEditorSheet: View {
         subtitle: String,
         initialAmount: Double?,
         allowsRemoval: Bool,
-        onSave: @escaping (Double?) -> Void)
-    {
+        onSave: @escaping (Double?) -> Void) {
         self.title = title
         self.subtitle = subtitle
         self.initialAmount = initialAmount
@@ -780,8 +779,7 @@ private struct CategoryBudgetEditorSheet: View {
         draft: CategoryBudgetDraft,
         categories: [LedgerCategory],
         onSave: @escaping (String, Double) -> Void,
-        onDelete: (() -> Void)? = nil)
-    {
+        onDelete: (() -> Void)? = nil) {
         self.draft = draft
         self.categories = categories
         self.onSave = onSave
