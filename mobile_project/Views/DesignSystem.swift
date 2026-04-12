@@ -23,14 +23,45 @@ struct LedgerCardModifier: ViewModifier {
             .background(
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
                     .fill(.white)
-                    .shadow(color: Color.black.opacity(0.04), radius: 18, x: 0, y: 10)
-            )
+                    .shadow(color: Color.black.opacity(0.04), radius: 18, x: 0, y: 10))
+    }
+}
+
+struct LedgerResponsiveButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .contentShape(Rectangle())
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .opacity(configuration.isPressed ? 0.86 : 1)
+            .animation(.easeOut(duration: 0.14), value: configuration.isPressed)
+    }
+}
+
+struct LedgerToolbarBackButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Color.ledgerText)
+                .frame(width: 44, height: 44)
+                .background(.white.opacity(0.92))
+                .clipShape(Circle())
+                .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 4)
+        }
+        .buttonStyle(LedgerResponsiveButtonStyle())
     }
 }
 
 extension View {
     func ledgerCard() -> some View {
         modifier(LedgerCardModifier())
+    }
+
+    func ledgerTapTarget(minSize: CGFloat = 44, alignment: Alignment = .center) -> some View {
+        frame(minWidth: minSize, minHeight: minSize, alignment: alignment)
+            .contentShape(Rectangle())
     }
 }
 

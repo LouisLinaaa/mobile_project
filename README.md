@@ -29,6 +29,7 @@ The current prototype already includes:
 
 - quick expense and income entry
 - home dashboard with monthly overview
+- budget management with monthly budget, dynamic daily budget, and category budgets
 - statistics dashboard with charts and rankings
 - asset account management
 - book management
@@ -43,6 +44,7 @@ The current prototype already includes:
 |---|---|---|
 | Core app architecture | Done | SwiftUI + centralized state store |
 | Quick bookkeeping flow | Done | Expense and income entry available |
+| Budget management | Done | Monthly, daily, and category budget flows available |
 | Statistics dashboard | Done | Trend, ranking, and category composition |
 | Book / asset / category management | Done | Core CRUD-style flows available |
 | Widget support | Done | Shared widget target and debug scheme included |
@@ -101,7 +103,12 @@ Common gaps we want to avoid:
 
 ```text
 mobile_project/              Main iOS app target
+mobile_project/Models/       Shared domain models
+mobile_project/ViewModels/   Centralized app state and business logic
+mobile_project/Views/        SwiftUI feature screens and components
+mobile_project/WidgetSupport/Shared widget snapshot models
 mobile_project_widgets/      Widget extension target
+scripts/                     Project automation and local tooling
 scripts/hooks/               Hook implementation scripts
 .githooks/                   Git hook entrypoints
 HOOKS.md                     Hook-specific notes
@@ -178,7 +185,8 @@ git config core.hooksPath .githooks
 
 - checks only the **staged** `.swift` content
 - blocks tab indentation and trailing whitespace
-- optionally runs `swiftformat --lint` when `swiftformat` is installed
+- runs `swiftformat --lint` only when both `swiftformat` and project config `.swiftformat` are available
+- avoids using SwiftFormat default rules as a hard gate when the repository has not defined its own formatting policy
 
 `pre-push`
 
@@ -191,6 +199,11 @@ git config core.hooksPath .githooks
 ```bash
 brew install swiftformat
 ```
+
+Project-level formatting files already included:
+
+- `.swiftformat`
+- `.swift-version`
 
 ### Manual verification
 
@@ -219,6 +232,7 @@ Use this only when you already understand the risk and intentionally want to byp
 - [ ] enable real iCloud backup after moving to a supported Apple Developer team
 - [ ] add recurring transaction / automation engine
 - [ ] add AI parsing and assistant-related flows
+- [ ] continue refining interaction responsiveness and navigation transitions
 - [ ] finish project report and contribution breakdown
 - [ ] record and submit the demo video
 

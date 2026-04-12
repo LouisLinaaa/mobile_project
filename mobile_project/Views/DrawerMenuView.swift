@@ -16,14 +16,12 @@ struct DrawerMenuView: View {
                         title: "常用功能",
                         items: DrawerShortcut.commonTools,
                         selectedDestination: selectedDestination,
-                        onTap: onShortcutTap
-                    )
+                        onTap: onShortcutTap)
                     ShortcutSectionCard(
                         title: "快捷记账",
                         items: DrawerShortcut.quickTools,
                         selectedDestination: selectedDestination,
-                        onTap: onShortcutTap
-                    )
+                        onTap: onShortcutTap)
                     linkCard
                     Spacer(minLength: 0)
                 }
@@ -40,22 +38,21 @@ struct DrawerMenuView: View {
                 topLeadingRadius: 0,
                 bottomLeadingRadius: 0,
                 bottomTrailingRadius: 40,
-                topTrailingRadius: 40
-            )
-            .fill(.white)
-            .shadow(color: Color.black.opacity(0.08), radius: 24, x: 10, y: 0)
-        )
+                topTrailingRadius: 40)
+                .fill(.white)
+                .shadow(color: Color.black.opacity(0.08), radius: 24, x: 10, y: 0))
         .overlay(alignment: .topTrailing) {
             Button(action: onClose) {
                 Image(systemName: "xmark")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Color.ledgerMuted)
-                    .frame(width: 30, height: 30)
+                    .frame(width: 44, height: 44)
                     .background(Color.ledgerCanvas)
                     .clipShape(Circle())
                     .padding(.top, max(8, min(22, topSafeInset * 0.35)))
                     .padding(.trailing, 12)
             }
+            .buttonStyle(LedgerResponsiveButtonStyle())
         }
         .clipped()
     }
@@ -106,8 +103,7 @@ struct DrawerMenuView: View {
                                 .frame(width: 36, height: 36)
                                 .background(
                                     RoundedRectangle(cornerRadius: 11, style: .continuous)
-                                        .fill(isSelected ? item.accent : item.accent.opacity(0.14))
-                                )
+                                        .fill(isSelected ? item.accent : item.accent.opacity(0.14)))
 
                             if item.showsBadge {
                                 Circle()
@@ -134,11 +130,10 @@ struct DrawerMenuView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(isSelected ? item.accent.opacity(0.12) : .clear)
-                    )
+                            .fill(isSelected ? item.accent.opacity(0.12) : .clear))
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(LedgerResponsiveButtonStyle())
 
                 if index < DrawerLinkItem.settingsItems.count - 1 {
                     Divider()
@@ -177,8 +172,7 @@ private struct ShortcutSectionCard: View {
                                     .frame(width: 50, height: 50)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                            .stroke(isSelected ? item.accent : .clear, lineWidth: 1.5)
-                                    )
+                                            .stroke(isSelected ? item.accent : .clear, lineWidth: 1.5))
 
                                 Image(systemName: item.icon)
                                     .font(.system(size: 20, weight: .medium))
@@ -196,7 +190,7 @@ private struct ShortcutSectionCard: View {
                         .padding(.vertical, 2)
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(LedgerResponsiveButtonStyle())
                 }
             }
         }
