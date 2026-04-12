@@ -4,6 +4,8 @@ import SwiftUI
 final class LedgerStore: ObservableObject {
     @Published var isBalanceVisible = true
     @Published var isQuickAddPresented = false
+    @Published private(set) var autoLedgerPendingLaunch: AutoLedgerLaunchPayload?
+    @Published private(set) var autoLedgerShortcutStatus = AutoLedgerHandoffStore.loadStatus()
     @Published var appSettings: AppSettings {
         didSet {
             guard appSettings != oldValue else { return }
@@ -98,6 +100,7 @@ final class LedgerStore: ObservableObject {
         configureICloudSync()
         refreshICloudBackupSummary()
         syncWidgetSnapshot()
+        refreshAutoLedgerShortcutState()
     }
 
     deinit {
@@ -148,7 +151,7 @@ final class LedgerStore: ObservableObject {
 
     var totalAssets: Double {
         accounts
-            .filter { $0.group.affectsAssets }
+            .filter(\.group.affectsAssets)
             .reduce(0) { $0 + $1.balance }
     }
 
@@ -228,6 +231,10 @@ final class LedgerStore: ObservableObject {
         }
     }
 
+    var hasPendingAutoLedgerLaunch: Bool {
+        autoLedgerPendingLaunch != nil
+    }
+
     func categories(for kind: LedgerKind) -> [LedgerCategory] {
         switch kind {
         case .expense:
@@ -272,6 +279,18 @@ final class LedgerStore: ObservableObject {
             title: title,
             date: Date()
         )
+    }
+
+    func refreshAutoLedgerShortcutState() {
+        autoLedgerPendingLaunch = AutoLedgerHandoffStore.peekPendingLaunch()
+        autoLedgerShortcutStatus = AutoLedgerHandoffStore.loadStatus()
+    }
+
+    func consumeAutoLedgerPendingLaunch() -> AutoLedgerLaunchPayload? {
+        let payload = AutoLedgerHandoffStore.consumePendingLaunch()
+        autoLedgerPendingLaunch = nil
+        autoLedgerShortcutStatus = AutoLedgerHandoffStore.loadStatus()
+        return payload
     }
 
     func addEntry(
@@ -589,8 +608,8 @@ final class LedgerStore: ObservableObject {
         return entries
             .filter { entry in
                 entry.bookID == bookID &&
-                entry.kind == kind &&
-                interval.contains(entry.date)
+                    entry.kind == kind &&
+                    interval.contains(entry.date)
             }
             .reduce(0) { $0 + $1.amount }
     }
@@ -599,11 +618,10 @@ final class LedgerStore: ObservableObject {
         let startDay = min(max(appSettings.monthStartDay, 1), 28)
         let day = calendar.component(.day, from: date)
 
-        let anchorDate: Date
-        if day < startDay {
-            anchorDate = calendar.date(byAdding: .month, value: -1, to: date) ?? date
+        let anchorDate: Date = if day < startDay {
+            calendar.date(byAdding: .month, value: -1, to: date) ?? date
         } else {
-            anchorDate = date
+            date
         }
 
         var components = calendar.dateComponents([.year, .month], from: anchorDate)
@@ -665,19 +683,19 @@ final class LedgerStore: ObservableObject {
     private func hexColor(for style: LedgerTintStyle) -> String {
         switch style {
         case .accent:
-            return "#4F81FA"
+            "#4F81FA"
         case .gold:
-            return "#F5C35A"
+            "#F5C35A"
         case .mint:
-            return "#75CAC2"
+            "#75CAC2"
         case .lavender:
-            return "#AAA1F7"
+            "#AAA1F7"
         case .coral:
-            return "#F2A193"
+            "#F2A193"
         case .expense:
-            return "#F57A61"
+            "#F57A61"
         case .income:
-            return "#4AAC84"
+            "#4AAC84"
         }
     }
 
@@ -840,7 +858,8 @@ final class LedgerStore: ObservableObject {
         accounts = snapshot.accounts
         categorySchemes = snapshot.categorySchemes.isEmpty ? LedgerCategoryScheme.defaultSchemes : snapshot.categorySchemes
         selectedBookID = books.contains(where: { $0.id == snapshot.selectedBookID }) ? snapshot.selectedBookID : books[0].id
-        selectedCategorySchemeID = categorySchemes.contains(where: { $0.id == snapshot.selectedCategorySchemeID }) ? snapshot.selectedCategorySchemeID : categorySchemes[0].id
+        selectedCategorySchemeID = categorySchemes.contains(where: { $0.id == snapshot.selectedCategorySchemeID }) ? snapshot
+            .selectedCategorySchemeID : categorySchemes[0].id
         flushPendingSettingsPersistence()
         flushPendingLedgerStatePersistence()
         syncWidgetSnapshot()
@@ -924,17 +943,31 @@ final class LedgerStore: ObservableObject {
             LedgerAccount(templateID: "wechat", name: "微信余额", icon: "message.fill", tintStyle: .mint, group: .asset, balance: 1480),
             LedgerAccount(templateID: "bank", name: "招商储蓄卡", icon: "creditcard.fill", tintStyle: .accent, group: .asset, balance: 8650),
             LedgerAccount(templateID: "yuebao", name: "余额宝", icon: "wallet.pass.fill", tintStyle: .gold, group: .investment, balance: 3600),
-            LedgerAccount(templateID: "credit-card", name: "信用卡", icon: "creditcard.trianglebadge.exclamationmark", tintStyle: .coral, group: .credit, balance: 920)
+            LedgerAccount(
+                templateID: "credit-card",
+                name: "信用卡",
+                icon: "creditcard.trianglebadge.exclamationmark",
+                tintStyle: .coral,
+                group: .credit,
+                balance: 920
+            )
         ]
 
-        let meal = defaultScheme.expenseCategories.first(where: { $0.id == "expense.meal" }) ?? LedgerCategory.defaultCategory(for: .expense)
-        let shopping = defaultScheme.expenseCategories.first(where: { $0.id == "expense.shopping" }) ?? LedgerCategory.defaultCategory(for: .expense)
-        let transit = defaultScheme.expenseCategories.first(where: { $0.id == "expense.transit" }) ?? LedgerCategory.defaultCategory(for: .expense)
-        let health = defaultScheme.expenseCategories.first(where: { $0.id == "expense.health" }) ?? LedgerCategory.defaultCategory(for: .expense)
-        let salary = defaultScheme.incomeCategories.first(where: { $0.id == "income.salary" }) ?? LedgerCategory.defaultCategory(for: .income)
-        let refund = defaultScheme.incomeCategories.first(where: { $0.id == "income.refund" }) ?? LedgerCategory.defaultCategory(for: .income)
+        let meal = defaultScheme.expenseCategories.first(where: { $0.id == "expense.meal" }) ?? LedgerCategory
+            .defaultCategory(for: .expense)
+        let shopping = defaultScheme.expenseCategories.first(where: { $0.id == "expense.shopping" }) ?? LedgerCategory
+            .defaultCategory(for: .expense)
+        let transit = defaultScheme.expenseCategories.first(where: { $0.id == "expense.transit" }) ?? LedgerCategory
+            .defaultCategory(for: .expense)
+        let health = defaultScheme.expenseCategories.first(where: { $0.id == "expense.health" }) ?? LedgerCategory
+            .defaultCategory(for: .expense)
+        let salary = defaultScheme.incomeCategories.first(where: { $0.id == "income.salary" }) ?? LedgerCategory
+            .defaultCategory(for: .income)
+        let refund = defaultScheme.incomeCategories.first(where: { $0.id == "income.refund" }) ?? LedgerCategory
+            .defaultCategory(for: .income)
         let trip = workScheme.expenseCategories.first(where: { $0.id == "work.trip" }) ?? LedgerCategory.defaultCategory(for: .expense)
-        let software = workScheme.expenseCategories.first(where: { $0.id == "work.software" }) ?? LedgerCategory.defaultCategory(for: .expense)
+        let software = workScheme.expenseCategories.first(where: { $0.id == "work.software" }) ?? LedgerCategory
+            .defaultCategory(for: .expense)
         let project = workScheme.incomeCategories.first(where: { $0.id == "work.project" }) ?? LedgerCategory.defaultCategory(for: .income)
 
         let entries = [

@@ -122,6 +122,12 @@ struct AutoLedgerReviewDraft: Identifiable {
     }
 }
 
+struct AutoLedgerShortcutStatusPresentation {
+    let title: String
+    let detail: String
+    let tint: String
+}
+
 struct AutoLedgerGatewayRequestBody: Encodable {
     let prompt: String
     let rawOCR: String?

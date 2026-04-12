@@ -6,6 +6,7 @@ cd "$REPO_ROOT"
 
 STAGED_SWIFT_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.swift$' || true)
 TMP_DIR="$(mktemp -d /tmp/mobile_project_pre_commit.XXXXXX)"
+SWIFTFORMAT_CONFIG="$REPO_ROOT/.swiftformat"
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -21,6 +22,11 @@ fi
 echo "[pre-commit] 开始检查 Swift 格式..."
 
 has_error=0
+swiftformat_available=0
+
+if command -v swiftformat >/dev/null 2>&1; then
+  swiftformat_available=1
+fi
 
 while IFS= read -r file; do
   [ -n "$file" ] || continue
@@ -44,8 +50,13 @@ while IFS= read -r file; do
     has_error=1
   fi
 
-  if command -v swiftformat >/dev/null 2>&1; then
-    if ! swiftformat --lint "$staged_copy"; then
+  if [ "$swiftformat_available" -eq 1 ]; then
+    swiftformat_args=(--lint --cache ignore "$staged_copy")
+    if [ -f "$SWIFTFORMAT_CONFIG" ]; then
+      swiftformat_args+=(--config "$SWIFTFORMAT_CONFIG")
+    fi
+
+    if ! swiftformat "${swiftformat_args[@]}"; then
       has_error=1
     fi
   fi
@@ -53,7 +64,7 @@ done <<< "$STAGED_SWIFT_FILES"
 
 if [ "$has_error" -ne 0 ]; then
   echo "[pre-commit] 格式检查失败。"
-  if ! command -v swiftformat >/dev/null 2>&1; then
+  if [ "$swiftformat_available" -ne 1 ]; then
     echo "[pre-commit] 可选增强: 安装 swiftformat 后将启用更完整检查。"
     echo "[pre-commit] 安装命令: brew install swiftformat"
   fi

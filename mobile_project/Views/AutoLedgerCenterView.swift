@@ -1,3 +1,4 @@
+import AppIntents
 import SwiftUI
 
 struct AutoLedgerCenterView: View {
@@ -26,9 +27,18 @@ struct AutoLedgerCenterView: View {
         .navigationTitle("自动记账")
         .navigationBarTitleDisplayMode(.inline)
         .alert("提示", isPresented: helperAlertBinding) {
-            Button("知道了", role: .cancel) { }
+            Button("知道了", role: .cancel) {}
         } message: {
             Text(helperMessage ?? "")
+        }
+        .task {
+            viewModel.refreshShortcutStatus()
+            await viewModel.processPendingLaunchIfNeeded(store: store)
+        }
+        .onChange(of: store.autoLedgerPendingLaunch) { _, _ in
+            Task {
+                await viewModel.processPendingLaunchIfNeeded(store: store)
+            }
         }
     }
 
@@ -70,6 +80,8 @@ struct AutoLedgerCenterView: View {
                 .foregroundStyle(Color.ledgerText)
                 .fixedSize(horizontal: false, vertical: true)
 
+            shortcutStatusBanner
+
             HStack(spacing: 12) {
                 Button {
                     openVideoTutorial()
@@ -84,23 +96,40 @@ struct AutoLedgerCenterView: View {
                 }
                 .buttonStyle(.plain)
 
-                Button {
-                    viewModel.beginShortcutGuide()
-                    openShortcutGallery()
-                } label: {
-                    Text("去添加")
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.ledgerAccent)
-                        .clipShape(Capsule())
+                VStack(spacing: 6) {
+                    ShortcutsLink {
+                        viewModel.beginShortcutGuide()
+                    }
+                    .shortcutsLinkStyle(.automatic)
+                    .frame(maxWidth: .infinity, minHeight: 50)
+
+                    Text("打开系统快捷指令页")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.ledgerMuted)
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(20)
         .ledgerCard()
+    }
+
+    private var shortcutStatusBanner: some View {
+        let presentation = viewModel.shortcutStatusPresentation
+
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(presentation.title)
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .foregroundStyle(statusTint(for: presentation.tint))
+
+            Text(presentation.detail)
+                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(statusTint(for: presentation.tint).opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var triggerGuideCard: some View {
@@ -109,7 +138,7 @@ struct AutoLedgerCenterView: View {
                 .font(.system(size: 30, weight: .black, design: .rounded))
                 .foregroundStyle(Color.ledgerAccent)
 
-            Text("根据你的习惯设置自动记账触发方式。V1 优先支持小白点与操作按钮。")
+            Text("确认系统快捷指令页里已经出现“自动记账”后，再根据你的习惯绑定触发方式。V1 优先支持小白点与操作按钮。")
                 .font(.system(size: 18, weight: .medium, design: .rounded))
                 .foregroundStyle(Color.ledgerText)
 
@@ -119,8 +148,8 @@ struct AutoLedgerCenterView: View {
                 steps: [
                     "打开手机「设置」-「辅助功能」-「触控」-「辅助触控」",
                     "打开「辅助触控」开关",
-                    "在单击/轻点两下/长按动作中绑定“自动记账动作”",
-                    "支付完成后触发对应动作，即可启动自动记账"
+                    "在单击/轻点两下/长按动作中绑定“自动记账”",
+                    "支付完成后触发对应动作，即可回到 App 审核自动记账结果"
                 ]
             )
 
@@ -129,20 +158,21 @@ struct AutoLedgerCenterView: View {
                 isExpanded: $viewModel.isActionButtonExpanded,
                 steps: [
                     "在 iPhone 设置中进入「操作按钮」",
-                    "将动作配置为运行“自动记账动作”"
+                    "将动作配置为运行“自动记账”",
+                    "按下后会直接打开 App 进入自动记账审核页"
                 ]
             )
 
             TriggerGuideRow(
-                title: "③ 通过“轻敲手机背面”触发（即将支持）",
+                title: "③ 通过“轻敲手机背面”触发（后续支持）",
                 isExpanded: $viewModel.isBackTapExpanded,
-                steps: ["入口已预留，后续版本会提供完整配置说明"]
+                steps: ["入口已预留，后续版本会补充稳定的配置与回流方案"]
             )
 
             TriggerGuideRow(
-                title: "④ 通过“控制中心”触发（即将支持）",
+                title: "④ 通过“控制中心”触发（后续支持）",
                 isExpanded: $viewModel.isControlCenterExpanded,
-                steps: ["入口已预留，后续版本会提供完整配置说明"]
+                steps: ["入口已预留，后续版本会补充系统级快捷入口支持"]
             )
         }
         .padding(20)
@@ -409,7 +439,7 @@ struct AutoLedgerCenterView: View {
             TextField("商户", text: draftBinding(\.merchant, default: ""))
                 .textFieldStyle(.roundedBorder)
             TextField("备注", text: draftBinding(\.note, default: ""), axis: .vertical)
-                .lineLimit(2...4)
+                .lineLimit(2 ... 4)
                 .textFieldStyle(.roundedBorder)
 
             VStack(alignment: .leading, spacing: 6) {
@@ -466,21 +496,21 @@ struct AutoLedgerCenterView: View {
     private var flowStateLabel: String {
         switch viewModel.flowState {
         case .idle:
-            return "待机"
+            "待机"
         case .awaitingShortcut:
-            return "等待触发"
+            "等待触发"
         case .uploading:
-            return "上传中"
+            "上传中"
         case .parsing:
-            return "识别中"
+            "识别中"
         case .review:
-            return "待审核"
+            "待审核"
         case .confirmed:
-            return "保存中"
+            "保存中"
         case .saved:
-            return "已保存"
+            "已保存"
         case .failed:
-            return "失败"
+            "失败"
         }
     }
 
@@ -511,8 +541,15 @@ struct AutoLedgerCenterView: View {
         helperMessage = "教程入口已预留。你可以在内部帮助中心配置正式教程链接。"
     }
 
-    private func openShortcutGallery() {
-        helperMessage = "添加入口已预留。你可以在这里对接内部动作中心或系统动作页。"
+    private func statusTint(for tint: String) -> Color {
+        switch tint {
+        case "success":
+            .ledgerIncome
+        case "error":
+            .ledgerExpense
+        default:
+            .ledgerAccent
+        }
     }
 
     private var helperAlertBinding: Binding<Bool> {

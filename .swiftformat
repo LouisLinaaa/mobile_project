@@ -1,0 +1,15 @@
+--swiftversion 5.10
+--indent 4
+--linebreaks lf
+--maxwidth 140
+--commas inline
+--disable blankLinesBetweenScopes
+--disable redundantSelf
+--disable redundantSendable
+--disable wrapMultilineStatementBraces
+--disable wrapPropertyBodies
+--disable andOperator
+--disable hoistPatternLet
+--disable enumNamespaces
+--disable trailingCommas
+--disable elseOnSameLine

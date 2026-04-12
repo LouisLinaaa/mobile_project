@@ -10,7 +10,9 @@ struct MobileProjectApp: App {
             HomeView()
                 .environmentObject(store)
                 .onChange(of: scenePhase) { _, newPhase in
-                    if newPhase == .inactive || newPhase == .background {
+                    if newPhase == .active {
+                        store.refreshAutoLedgerShortcutState()
+                    } else if newPhase == .inactive || newPhase == .background {
                         store.flushPendingSettingsPersistence()
                     }
                 }

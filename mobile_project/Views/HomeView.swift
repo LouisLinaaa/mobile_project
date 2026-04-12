@@ -64,11 +64,15 @@ struct HomeView: View {
                 .environmentObject(store)
         }
         .alert("功能预留", isPresented: featureAlertBinding) {
-            Button("知道了", role: .cancel) { }
+            Button("知道了", role: .cancel) {}
         } message: {
             Text("\(highlightedFeature ?? "这个入口") 先保留了结构和入口，后续我们可以继续把它做成完整功能。")
         }
         .onOpenURL(perform: handleWidgetDeepLink(_:))
+        .onAppear(perform: openPendingAutoLedgerIfNeeded)
+        .onChange(of: store.autoLedgerPendingLaunch) { _, _ in
+            openPendingAutoLedgerIfNeeded()
+        }
     }
 
     private var mainContent: some View {
@@ -120,7 +124,7 @@ struct HomeView: View {
                 }
 
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5), spacing: 8) {
-                    ForEach(1...daysInCurrentMonth, id: \.self) { day in
+                    ForEach(1 ... daysInCurrentMonth, id: \.self) { day in
                         let isToday = day == Calendar.current.component(.day, from: Date())
                         let hasRecord = store.monthRecordedDays.contains(day)
 
@@ -235,7 +239,8 @@ struct HomeView: View {
                             store.isBalanceVisible.toggle()
                         }
                     } label: {
-                        Image(systemName: store.appSettings.hideSensitiveInfo ? "lock.fill" : (store.isBalanceVisible ? "eye.fill" : "eye.slash.fill"))
+                        Image(systemName: store.appSettings
+                            .hideSensitiveInfo ? "lock.fill" : (store.isBalanceVisible ? "eye.fill" : "eye.slash.fill"))
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Color.ledgerAccent)
                     }
@@ -247,19 +252,19 @@ struct HomeView: View {
                 Button {
                     openScreen(.statistics)
                 } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "chart.pie.fill")
-                            Text("统计")
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 12, weight: .bold))
-                        }
-                        .foregroundStyle(Color.ledgerText)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(Color.ledgerAccentSoft.opacity(0.85))
-                        .clipShape(Capsule())
+                    HStack(spacing: 8) {
+                        Image(systemName: "chart.pie.fill")
+                        Text("统计")
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .bold))
                     }
+                    .foregroundStyle(Color.ledgerText)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color.ledgerAccentSoft.opacity(0.85))
+                    .clipShape(Capsule())
+                }
             }
 
             ZStack(alignment: .leading) {
@@ -289,7 +294,7 @@ struct HomeView: View {
                         budgetLimit: store.budgetLimit,
                         isSensitiveVisible: isSensitiveInfoVisible
                     )
-                        .frame(width: 100, height: 100)
+                    .frame(width: 100, height: 100)
                 }
 
                 VStack(alignment: .leading, spacing: 18) {
@@ -301,7 +306,7 @@ struct HomeView: View {
                             budgetLimit: store.budgetLimit,
                             isSensitiveVisible: isSensitiveInfoVisible
                         )
-                            .frame(width: 108, height: 108)
+                        .frame(width: 108, height: 108)
                         Spacer()
                     }
                 }
@@ -635,11 +640,19 @@ struct HomeView: View {
             openScreen(.categories)
         case "auto-ledger":
             openScreen(.autoLedgerCenter)
+        case "auto-ledger-review":
+            store.refreshAutoLedgerShortcutState()
+            openScreen(.autoLedgerCenter)
         case "widgets":
             openScreen(.widgets)
         default:
             break
         }
+    }
+
+    private func openPendingAutoLedgerIfNeeded() {
+        guard store.hasPendingAutoLedgerLaunch else { return }
+        openScreen(.autoLedgerCenter)
     }
 }
 
@@ -807,11 +820,13 @@ private struct TransactionRow: View {
 
             Text(
                 isSensitiveVisible
-                    ? (entry.kind == .expense ? "-\(LedgerFormatters.currency(entry.amount))" : "+\(LedgerFormatters.currency(entry.amount))")
+                    ?
+                    (entry
+                        .kind == .expense ? "-\(LedgerFormatters.currency(entry.amount))" : "+\(LedgerFormatters.currency(entry.amount))")
                     : (entry.kind == .expense ? "-¥••••" : "+¥••••")
             )
-                .font(.system(size: 17, weight: .bold, design: .rounded))
-                .foregroundStyle(entry.kind == .expense ? Color.ledgerExpense : Color.ledgerIncome)
+            .font(.system(size: 17, weight: .bold, design: .rounded))
+            .foregroundStyle(entry.kind == .expense ? Color.ledgerExpense : Color.ledgerIncome)
         }
         .padding(14)
         .background(Color.ledgerAccentMuted.opacity(0.62))
