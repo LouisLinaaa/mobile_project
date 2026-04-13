@@ -1,6 +1,6 @@
 import Foundation
 #if canImport(WidgetKit)
-import WidgetKit
+    import WidgetKit
 #endif
 
 enum LedgerWidgetShared {
@@ -52,8 +52,7 @@ struct LedgerWidgetSnapshot: Codable {
         autoLedgerPendingCount: 1,
         autoLedgerPostedCount: 0,
         autoLedgerFailedCount: 0,
-        autoLedgerUpdatedAt: Date()
-    )
+        autoLedgerUpdatedAt: Date())
 }
 
 enum LedgerWidgetSnapshotStore {
@@ -86,9 +85,9 @@ enum LedgerWidgetSnapshotStore {
     static func save(_ snapshot: LedgerWidgetSnapshot) {
         guard let data = try? encoder.encode(snapshot) else { return }
         defaults.set(data, forKey: LedgerWidgetShared.snapshotDefaultsKey)
-#if canImport(WidgetKit)
-        scheduleReload()
-#endif
+        #if canImport(WidgetKit)
+            scheduleReload()
+        #endif
     }
 
     static func load() -> LedgerWidgetSnapshot {
@@ -99,16 +98,16 @@ enum LedgerWidgetSnapshotStore {
         return snapshot
     }
 
-#if canImport(WidgetKit)
-    private static func scheduleReload() {
-        pendingReload?.cancel()
-        let workItem = DispatchWorkItem {
-            widgetKinds.forEach { kind in
-                WidgetCenter.shared.reloadTimelines(ofKind: kind)
+    #if canImport(WidgetKit)
+        private static func scheduleReload() {
+            pendingReload?.cancel()
+            let workItem = DispatchWorkItem {
+                for kind in widgetKinds {
+                    WidgetCenter.shared.reloadTimelines(ofKind: kind)
+                }
             }
+            pendingReload = workItem
+            reloadQueue.asyncAfter(deadline: .now() + 0.8, execute: workItem)
         }
-        pendingReload = workItem
-        reloadQueue.asyncAfter(deadline: .now() + 0.8, execute: workItem)
-    }
-#endif
+    #endif
 }

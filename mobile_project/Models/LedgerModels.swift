@@ -390,6 +390,10 @@ struct AppSettings: Codable, Equatable {
     var pushBudgetReminder = true
     var pushFeatureRecommendation = true
     var pushBillReview = true
+    var hasSeenShortcutInstallGuide = false
+    var hasAcknowledgedShortcutInstall = false
+    var preferredTriggerMode: AutoLedgerPreferredTriggerMode = .assistiveTouch
+    var lastShortcutEducationState: AutoLedgerShortcutEducationState = .install
 
     init() {}
 
@@ -409,6 +413,10 @@ struct AppSettings: Codable, Equatable {
         case pushBudgetReminder
         case pushFeatureRecommendation
         case pushBillReview
+        case hasSeenShortcutInstallGuide
+        case hasAcknowledgedShortcutInstall
+        case preferredTriggerMode
+        case lastShortcutEducationState
     }
 
     init(from decoder: Decoder) throws {
@@ -426,6 +434,15 @@ struct AppSettings: Codable, Equatable {
         pushBudgetReminder = try container.decodeIfPresent(Bool.self, forKey: .pushBudgetReminder) ?? true
         pushFeatureRecommendation = try container.decodeIfPresent(Bool.self, forKey: .pushFeatureRecommendation) ?? true
         pushBillReview = try container.decodeIfPresent(Bool.self, forKey: .pushBillReview) ?? true
+        hasSeenShortcutInstallGuide = try container
+            .decodeIfPresent(Bool.self, forKey: .hasSeenShortcutInstallGuide) ?? false
+        hasAcknowledgedShortcutInstall = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .hasAcknowledgedShortcutInstall) ?? false
+        preferredTriggerMode = try container
+            .decodeIfPresent(AutoLedgerPreferredTriggerMode.self, forKey: .preferredTriggerMode) ?? .assistiveTouch
+        lastShortcutEducationState = try container
+            .decodeIfPresent(AutoLedgerShortcutEducationState.self, forKey: .lastShortcutEducationState) ?? .install
     }
 }
 

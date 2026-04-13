@@ -176,11 +176,8 @@ struct WidgetCenterView: View {
                     LinearGradient(
                         colors: [Color.white, kind.accent.opacity(0.22)],
                         startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .shadow(color: kind.accent.opacity(0.18), radius: 16, x: 0, y: 10)
-        )
+                        endPoint: .bottomTrailing))
+                .shadow(color: kind.accent.opacity(0.18), radius: 16, x: 0, y: 10))
     }
 
     private var todayExpensePreview: some View {
@@ -368,8 +365,7 @@ struct WidgetCenterView: View {
                     .padding(14)
                     .background(
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(selectedTemplate == kind ? kind.accent.opacity(0.14) : Color.white)
-                    )
+                            .fill(selectedTemplate == kind ? kind.accent.opacity(0.14) : Color.white))
                 }
                 .buttonStyle(.plain)
             }

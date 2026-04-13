@@ -1,5 +1,132 @@
 import SwiftUI
 
+struct LedgerPersistenceSnapshot: Codable {
+    var appSettings: AppSettings
+    var budgetLimit: Double?
+    var bookBudgets: [LedgerBookBudget]
+    var categoryBudgets: [LedgerCategoryBudget]
+    var entries: [LedgerEntry]
+    var books: [LedgerBook]
+    var selectedBookID: UUID
+    var accounts: [LedgerAccount]
+    var categorySchemes: [LedgerCategoryScheme]
+    var selectedCategorySchemeID: UUID
+
+    private enum CodingKeys: String, CodingKey {
+        case appSettings
+        case budgetLimit
+        case bookBudgets
+        case categoryBudgets
+        case entries
+        case books
+        case selectedBookID
+        case accounts
+        case categorySchemes
+        case selectedCategorySchemeID
+    }
+
+    init(
+        appSettings: AppSettings,
+        budgetLimit: Double?,
+        bookBudgets: [LedgerBookBudget],
+        categoryBudgets: [LedgerCategoryBudget],
+        entries: [LedgerEntry],
+        books: [LedgerBook],
+        selectedBookID: UUID,
+        accounts: [LedgerAccount],
+        categorySchemes: [LedgerCategoryScheme],
+        selectedCategorySchemeID: UUID) {
+        self.appSettings = appSettings
+        self.budgetLimit = budgetLimit
+        self.bookBudgets = bookBudgets
+        self.categoryBudgets = categoryBudgets
+        self.entries = entries
+        self.books = books
+        self.selectedBookID = selectedBookID
+        self.accounts = accounts
+        self.categorySchemes = categorySchemes
+        self.selectedCategorySchemeID = selectedCategorySchemeID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        appSettings = try container.decode(AppSettings.self, forKey: .appSettings)
+        budgetLimit = try container.decodeIfPresent(Double.self, forKey: .budgetLimit)
+        bookBudgets = try container.decodeIfPresent([LedgerBookBudget].self, forKey: .bookBudgets) ?? []
+        categoryBudgets = try container.decodeIfPresent([LedgerCategoryBudget].self, forKey: .categoryBudgets) ?? []
+        entries = try container.decodeIfPresent([LedgerEntry].self, forKey: .entries) ?? []
+        books = try container.decodeIfPresent([LedgerBook].self, forKey: .books) ?? []
+        selectedBookID = try container.decodeIfPresent(UUID.self, forKey: .selectedBookID) ?? UUID()
+        accounts = try container.decodeIfPresent([LedgerAccount].self, forKey: .accounts) ?? []
+        categorySchemes = try container.decodeIfPresent([LedgerCategoryScheme].self, forKey: .categorySchemes) ?? []
+        selectedCategorySchemeID = try container.decodeIfPresent(UUID.self, forKey: .selectedCategorySchemeID) ?? UUID()
+    }
+}
+
+enum LedgerPersistenceStore {
+    private static let appSettingsKey = "ledger.app.settings"
+    private static let persistedStateKey = "ledger.app.persisted.state"
+
+    private static let encoder = JSONEncoder()
+    private static let decoder = JSONDecoder()
+
+    private static var sharedDefaults: UserDefaults {
+        UserDefaults(suiteName: LedgerWidgetShared.appGroupID) ?? .standard
+    }
+
+    private static var fallbackDefaults: UserDefaults {
+        .standard
+    }
+
+    static func loadAppSettings() -> AppSettings {
+        loadValue(AppSettings.self, forKey: appSettingsKey) ?? AppSettings()
+    }
+
+    static func saveAppSettings(_ settings: AppSettings) {
+        saveValue(settings, forKey: appSettingsKey)
+    }
+
+    static func loadPersistedState() -> LedgerPersistenceSnapshot? {
+        loadValue(LedgerPersistenceSnapshot.self, forKey: persistedStateKey)
+    }
+
+    static func loadOrSeedPersistedState() -> LedgerPersistenceSnapshot {
+        if let persistedState = loadPersistedState() {
+            return persistedState
+        }
+
+        let seed = LedgerStore.makeSeedPersistedState(appSettings: loadAppSettings())
+        savePersistedState(seed)
+        return seed
+    }
+
+    static func savePersistedState(_ snapshot: LedgerPersistenceSnapshot) {
+        saveValue(snapshot, forKey: persistedStateKey)
+    }
+
+    private static func loadValue<Value: Decodable>(_ type: Value.Type, forKey key: String) -> Value? {
+        if let data = sharedDefaults.data(forKey: key),
+           let decoded = try? decoder.decode(Value.self, from: data) {
+            fallbackDefaults.set(data, forKey: key)
+            return decoded
+        }
+
+        if let data = fallbackDefaults.data(forKey: key),
+           let decoded = try? decoder.decode(Value.self, from: data) {
+            sharedDefaults.set(data, forKey: key)
+            return decoded
+        }
+
+        return nil
+    }
+
+    private static func saveValue(_ value: some Encodable, forKey key: String) {
+        guard let data = try? encoder.encode(value) else { return }
+        sharedDefaults.set(data, forKey: key)
+        fallbackDefaults.set(data, forKey: key)
+    }
+}
+
 @MainActor
 final class LedgerStore: ObservableObject {
     @Published var isBalanceVisible = true
@@ -62,8 +189,6 @@ final class LedgerStore: ObservableObject {
     @Published private(set) var iCloudBackupSummary: CloudBackupSummary?
 
     private let calendar = Calendar.current
-    private let appSettingsKey = "ledger.app.settings"
-    private let persistedStateKey = "ledger.app.persisted.state"
     private let localBackupSnapshotKey = "ledger.local.backup.snapshot"
     private let localBackupDateKey = "ledger.local.backup.date"
     private let iCloudBackupSnapshotKey = "ledger.icloud.backup.snapshot"
@@ -371,6 +496,12 @@ final class LedgerStore: ObservableObject {
     func refreshAutoLedgerShortcutState() {
         autoLedgerPendingLaunch = AutoLedgerHandoffStore.peekPendingLaunch()
         autoLedgerShortcutStatus = AutoLedgerHandoffStore.loadStatus()
+    }
+
+    func reloadPersistedStateIfAvailable() {
+        restorePersistedStateIfAvailable()
+        refreshAutoLedgerShortcutState()
+        syncWidgetSnapshot()
     }
 
     func consumeAutoLedgerPendingLaunch() -> AutoLedgerLaunchPayload? {
@@ -893,24 +1024,17 @@ final class LedgerStore: ObservableObject {
     }
 
     private func loadAppSettings() -> AppSettings {
-        guard let data = UserDefaults.standard.data(forKey: appSettingsKey),
-              let settings = try? JSONDecoder().decode(AppSettings.self, from: data)
-        else {
-            return AppSettings()
-        }
-        return settings
+        LedgerPersistenceStore.loadAppSettings()
     }
 
     private func schedulePersistAppSettings() {
         settingsPersistTask?.cancel()
 
         let currentSettings = appSettings
-        let key = appSettingsKey
         settingsPersistTask = Task.detached(priority: .utility) {
             try? await Task.sleep(nanoseconds: 220_000_000)
             guard !Task.isCancelled else { return }
-            guard let data = try? JSONEncoder().encode(currentSettings) else { return }
-            UserDefaults.standard.set(data, forKey: key)
+            LedgerPersistenceStore.saveAppSettings(currentSettings)
         }
     }
 
@@ -918,27 +1042,23 @@ final class LedgerStore: ObservableObject {
         statePersistTask?.cancel()
 
         let snapshot = currentPersistedState
-        let key = persistedStateKey
         statePersistTask = Task.detached(priority: .utility) {
             try? await Task.sleep(nanoseconds: 220_000_000)
             guard !Task.isCancelled else { return }
-            guard let data = try? JSONEncoder().encode(snapshot) else { return }
-            UserDefaults.standard.set(data, forKey: key)
+            LedgerPersistenceStore.savePersistedState(snapshot)
         }
     }
 
     func flushPendingSettingsPersistence() {
         settingsPersistTask?.cancel()
         settingsPersistTask = nil
-        guard let data = try? JSONEncoder().encode(appSettings) else { return }
-        UserDefaults.standard.set(data, forKey: appSettingsKey)
+        LedgerPersistenceStore.saveAppSettings(appSettings)
     }
 
     func flushPendingLedgerStatePersistence() {
         statePersistTask?.cancel()
         statePersistTask = nil
-        guard let data = try? JSONEncoder().encode(currentPersistedState) else { return }
-        UserDefaults.standard.set(data, forKey: persistedStateKey)
+        LedgerPersistenceStore.savePersistedState(currentPersistedState)
     }
 
     private func loadLastBackupDate() -> Date? {
@@ -946,9 +1066,7 @@ final class LedgerStore: ObservableObject {
     }
 
     private func restorePersistedStateIfAvailable() {
-        guard let data = UserDefaults.standard.data(forKey: persistedStateKey),
-              let snapshot = try? JSONDecoder().decode(PersistedLedgerState.self, from: data)
-        else {
+        guard let snapshot = LedgerPersistenceStore.loadPersistedState() else {
             return
         }
         applyPersistedState(snapshot)
@@ -988,8 +1106,8 @@ final class LedgerStore: ObservableObject {
             fileSizeDescription: ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file))
     }
 
-    private var currentPersistedState: PersistedLedgerState {
-        PersistedLedgerState(
+    private var currentPersistedState: LedgerPersistenceSnapshot {
+        LedgerPersistenceSnapshot(
             appSettings: appSettings,
             budgetLimit: budgetLimit,
             bookBudgets: bookBudgets,
@@ -1025,7 +1143,7 @@ final class LedgerStore: ObservableObject {
 
     private func applyBackupSnapshot(_ snapshot: BackupSnapshot) {
         applyPersistedState(
-            PersistedLedgerState(
+            LedgerPersistenceSnapshot(
                 appSettings: snapshot.appSettings,
                 budgetLimit: snapshot.budgetLimit,
                 bookBudgets: snapshot.bookBudgets,
@@ -1038,7 +1156,7 @@ final class LedgerStore: ObservableObject {
                 selectedCategorySchemeID: snapshot.selectedCategorySchemeID))
     }
 
-    private func applyPersistedState(_ snapshot: PersistedLedgerState) {
+    private func applyPersistedState(_ snapshot: LedgerPersistenceSnapshot) {
         let fallbackSeed = LedgerStore.makeSeedData()
         let restoredBooks = snapshot.books.isEmpty ? fallbackSeed.books : snapshot.books
         let restoredSchemes = snapshot.categorySchemes.isEmpty ? LedgerCategoryScheme.defaultSchemes : snapshot
@@ -1082,70 +1200,6 @@ final class LedgerStore: ObservableObject {
         let totalBookCount: Int
         let totalAccountCount: Int
         let totalCategorySchemeCount: Int
-    }
-
-    private struct PersistedLedgerState: Codable {
-        let appSettings: AppSettings
-        let budgetLimit: Double?
-        let bookBudgets: [LedgerBookBudget]
-        let categoryBudgets: [LedgerCategoryBudget]
-        let entries: [LedgerEntry]
-        let books: [LedgerBook]
-        let selectedBookID: UUID
-        let accounts: [LedgerAccount]
-        let categorySchemes: [LedgerCategoryScheme]
-        let selectedCategorySchemeID: UUID
-
-        private enum CodingKeys: String, CodingKey {
-            case appSettings
-            case budgetLimit
-            case bookBudgets
-            case categoryBudgets
-            case entries
-            case books
-            case selectedBookID
-            case accounts
-            case categorySchemes
-            case selectedCategorySchemeID
-        }
-
-        init(
-            appSettings: AppSettings,
-            budgetLimit: Double?,
-            bookBudgets: [LedgerBookBudget],
-            categoryBudgets: [LedgerCategoryBudget],
-            entries: [LedgerEntry],
-            books: [LedgerBook],
-            selectedBookID: UUID,
-            accounts: [LedgerAccount],
-            categorySchemes: [LedgerCategoryScheme],
-            selectedCategorySchemeID: UUID) {
-            self.appSettings = appSettings
-            self.budgetLimit = budgetLimit
-            self.bookBudgets = bookBudgets
-            self.categoryBudgets = categoryBudgets
-            self.entries = entries
-            self.books = books
-            self.selectedBookID = selectedBookID
-            self.accounts = accounts
-            self.categorySchemes = categorySchemes
-            self.selectedCategorySchemeID = selectedCategorySchemeID
-        }
-
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            appSettings = try container.decode(AppSettings.self, forKey: .appSettings)
-            budgetLimit = try container.decodeIfPresent(Double.self, forKey: .budgetLimit)
-            bookBudgets = try container.decodeIfPresent([LedgerBookBudget].self, forKey: .bookBudgets) ?? []
-            categoryBudgets = try container.decodeIfPresent([LedgerCategoryBudget].self, forKey: .categoryBudgets) ?? []
-            entries = try container.decodeIfPresent([LedgerEntry].self, forKey: .entries) ?? []
-            books = try container.decodeIfPresent([LedgerBook].self, forKey: .books) ?? []
-            selectedBookID = try container.decodeIfPresent(UUID.self, forKey: .selectedBookID) ?? UUID()
-            accounts = try container.decodeIfPresent([LedgerAccount].self, forKey: .accounts) ?? []
-            categorySchemes = try container.decodeIfPresent([LedgerCategoryScheme].self, forKey: .categorySchemes) ?? []
-            selectedCategorySchemeID = try container
-                .decodeIfPresent(UUID.self, forKey: .selectedCategorySchemeID) ?? UUID()
-        }
     }
 
     private struct BackupSnapshot: Codable {
@@ -1238,7 +1292,7 @@ final class LedgerStore: ObservableObject {
         let entries: [LedgerEntry]
     }
 
-    private static func makeSeedData() -> SeedState {
+    private nonisolated static func makeSeedData() -> SeedState {
         let now = Date()
         let calendar = Calendar.current
 
@@ -1416,5 +1470,23 @@ final class LedgerStore: ObservableObject {
             categorySchemes: schemes,
             selectedCategorySchemeID: defaultScheme.id,
             entries: entries)
+    }
+
+    nonisolated static func makeSeedPersistedState(appSettings: AppSettings = AppSettings())
+        -> LedgerPersistenceSnapshot {
+        let seed = makeSeedData()
+        let selectedBookBudget = seed.bookBudgets.first(where: { $0.bookID == seed.selectedBookID })?.monthlyLimit
+
+        return LedgerPersistenceSnapshot(
+            appSettings: appSettings,
+            budgetLimit: selectedBookBudget,
+            bookBudgets: seed.bookBudgets,
+            categoryBudgets: seed.categoryBudgets,
+            entries: seed.entries,
+            books: seed.books,
+            selectedBookID: seed.selectedBookID,
+            accounts: seed.accounts,
+            categorySchemes: seed.categorySchemes,
+            selectedCategorySchemeID: seed.selectedCategorySchemeID)
     }
 }
