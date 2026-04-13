@@ -1,16 +1,17 @@
-# Auto Ledger LLM Gateway
+# Auto Ledger LLM (OpenAI Chat Completions)
 
 This layer is intentionally independent from the Auto Ledger UI and shortcut flow.
 
 ## Environment keys
 
-Use the variables from [.env.template](/Users/linruiyi/Documents/Playground/.env.template):
+Use the variables from `.env.template`:
 
-- `AUTO_LEDGER_LLM_ENDPOINT`
-- `AUTO_LEDGER_LLM_API_KEY`
-- `AUTO_LEDGER_LLM_MODEL`
-- `AUTO_LEDGER_LLM_SYSTEM_PROMPT`
-- `AUTO_LEDGER_LLM_USER_PROMPT_TEMPLATE`
+- `AUTO_LEDGER_OPENAI_ENDPOINT`
+- `AUTO_LEDGER_OPENAI_API_KEY`
+- `AUTO_LEDGER_OPENAI_MODEL`
+- `AUTO_LEDGER_OPENAI_ENABLE_THINKING`
+- `AUTO_LEDGER_OPENAI_SYSTEM_PROMPT`
+- `AUTO_LEDGER_OPENAI_USER_PROMPT_TEMPLATE`
 
 On iOS, the app reads these values from:
 
@@ -21,77 +22,81 @@ It does **not** read `.env` directly at runtime.
 
 ## Call site
 
-The entry point is [AutoLedgerLLM.swift](/Users/linruiyi/Documents/Playground/mobile_project/ViewModels/AutoLedgerLLM.swift), and the request is sent from [AutoLedgerFlow.swift](/Users/linruiyi/Documents/Playground/mobile_project/ViewModels/AutoLedgerFlow.swift).
+The entry point is `mobile_project/ViewModels/AutoLedgerLLM.swift`, and the request is sent from `mobile_project/ViewModels/AutoLedgerFlow.swift`.
 
-`GatewayAutoLedgerService.parseReceipt(...)` sends:
+`GatewayAutoLedgerService.parseReceipt(...)` sends an OpenAI Chat Completions request:
 
 ```json
 {
   "model": "gpt-4.1-mini",
-  "systemPrompt": "...",
-  "userPrompt": "...",
-  "rawOCR": "merged OCR text from shortcut hint + Vision OCR",
-  "imageBase64": "optional base64 image"
+  "messages": [
+    {
+      "role": "system",
+      "content": "..."
+    },
+    {
+      "role": "user",
+      "content": [
+        { "type": "text", "text": "..." },
+        { "type": "image_url", "image_url": { "url": "data:image/png;base64,..." } }
+      ]
+    }
+  ],
+  "response_format": { "type": "json_object" }
 }
 ```
 
-The gateway now receives both:
+The OpenAI request now receives both:
 
-- `imageBase64`: the original screenshot
-- `rawOCR`: merged OCR text, generated from:
+- an image part: the original screenshot as a `data:image/png;base64,...` URL
+- OCR text, merged from:
   - shortcut input `OCR 文本`
   - on-device Vision OCR over the screenshot
 
-That means the model can use image understanding and text extraction together. The OCR channel is no longer optional in normal screenshot flows.
+The model can use image understanding and text extraction together. The OCR channel is no longer optional in normal screenshot flows.
 
 ## Expected response
 
-Preferred wrapper:
+Preferred response JSON (returned as the assistant message content):
 
 ```json
 {
-  "result": {
-    "amount": 53.3,
-    "kind": "expense",
-    "category": "餐饮",
-    "paymentMethod": "微信",
-    "time": "2026-04-12T18:55:00Z",
-    "merchant": "KFC Hong Kong",
-    "note": "自动识别：KFC Hong Kong",
-    "rawText": "OCR or merged text",
-    "confidence": 0.87,
-    "reason": "根据金额行和商户行推断",
-    "recognizedEntryCount": 1
-  }
+  "entries": [
+    {
+      "amount": 53.3,
+      "kind": "expense",
+      "category": "餐饮",
+      "paymentMethod": "微信",
+      "time": "2026-04-12T18:55:00Z",
+      "merchant": "KFC Hong Kong",
+      "note": "自动识别：KFC Hong Kong",
+      "rawText": "OCR or merged text",
+      "confidence": 0.87,
+      "reason": "根据金额行和商户行推断"
+    }
+  ],
+  "recognizedEntryCount": 2,
+  "primaryIndex": 0
 }
 ```
 
 Also supported:
 
-- `{"resultJSON":"{...json string...}" }`
-- direct top-level `AutoLedgerParseResult` JSON
+- `{"result": {...}}` wrapper
 
 ## Required fields
 
-The model must return these fields inside `result`:
+The model must return these fields:
 
-- `amount`: number, required, final transaction amount in the app currency
-- `kind`: `"expense"` or `"income"`, required
-- `category`: string, optional but strongly recommended
-- `paymentMethod`: string, optional but strongly recommended
-- `time`: ISO8601 datetime string, required when identifiable, otherwise best-effort current date + recognized time
-- `merchant`: string, optional
-- `note`: string, optional
-- `rawText`: string, required, the text evidence actually used by the model
-- `confidence`: number in `[0, 1]`, required
-- `reason`: string, required, brief explanation of why the model chose this result
+- `entries`: array of records, required
 - `recognizedEntryCount`: integer >= 1, required
+- `primaryIndex`: integer index in entries, required
 
 If the screenshot contains multiple candidate records, the model should:
 
+- return all reliable records in `entries`
 - set `recognizedEntryCount` to the candidate count when it can estimate it
-- still return the single most reliable record
-- explain the selection rule in `reason`
+- set `primaryIndex` to the most reliable record
 
 ## Recognition scope
 
@@ -121,7 +126,7 @@ The most important field is `amount`. If `amount` is missing or not numeric, the
 
 ## Prompt placeholders
 
-`AUTO_LEDGER_LLM_USER_PROMPT_TEMPLATE` supports:
+`AUTO_LEDGER_OPENAI_USER_PROMPT_TEMPLATE` supports:
 
 - `{{currencyCode}}`
 - `{{localeIdentifier}}`
@@ -139,8 +144,8 @@ Recommended `systemPrompt`:
 
 硬性要求：
 1. 只输出 JSON，不要输出 Markdown，不要输出解释性前后缀。
-2. 顶层返回 {"result": {...}}，其中 result 必须包含：amount, kind, category, paymentMethod, time, merchant, note, rawText, confidence, reason, recognizedEntryCount。
-3. amount 必须是数字；kind 只能是 expense 或 income；confidence 必须是 0 到 1 的数字；recognizedEntryCount 必须是大于等于 1 的整数。
+2. 顶层返回 JSON 对象，必须包含：entries, recognizedEntryCount, primaryIndex。
+3. entries 元素必须包含：amount, kind, category, paymentMethod, time, merchant, note, rawText, confidence, reason。
 4. 如果截图中有多笔候选记录，返回最可信的一笔，并在 recognizedEntryCount 和 reason 里说明。
 5. 如果无法可靠识别 amount，就返回错误语义：amount=null，confidence<=0.35，并在 reason 里明确说明失败原因；不要编造金额。
 6. 优先使用“实际支付金额/实付/收款金额/到账金额”，不要把标价、优惠前金额、汇率换算金额、列表页其他金额当作最终金额。
@@ -164,7 +169,7 @@ OCR 文本如下：
 {{rawOCR}}
 
 输出要求：
-- 返回 {"result": {...}} JSON
+- 返回 JSON 对象（含 entries 数组）
 - 如果 category 无法精确命中，可以返回最接近的中文类别
 - 如果 paymentMethod 无法确定，返回“待确认”
 - 如果 merchant 无法确定，返回空字符串

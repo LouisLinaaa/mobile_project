@@ -4,15 +4,15 @@
 <dict>
 	<key>APP_GROUP_IDENTIFIER</key>
 	<string>$(APP_GROUP_IDENTIFIER)</string>
-	<key>AUTO_LEDGER_LLM_API_KEY</key>
+	<key>AUTO_LEDGER_OPENAI_API_KEY</key>
 	<string></string>
-	<key>AUTO_LEDGER_LLM_ENDPOINT</key>
+	<key>AUTO_LEDGER_OPENAI_ENDPOINT</key>
 	<string></string>
-	<key>AUTO_LEDGER_LLM_MODEL</key>
+	<key>AUTO_LEDGER_OPENAI_MODEL</key>
 	<string></string>
-	<key>AUTO_LEDGER_LLM_SYSTEM_PROMPT</key>
+	<key>AUTO_LEDGER_OPENAI_SYSTEM_PROMPT</key>
 	<string></string>
-	<key>AUTO_LEDGER_LLM_USER_PROMPT_TEMPLATE</key>
+	<key>AUTO_LEDGER_OPENAI_USER_PROMPT_TEMPLATE</key>
 	<string></string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>

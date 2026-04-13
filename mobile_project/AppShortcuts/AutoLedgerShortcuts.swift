@@ -76,6 +76,7 @@ struct AutoLedgerShortcutRunStatus: Codable, Equatable, Sendable {
 enum AutoLedgerHandoffStore {
     private static let pendingLaunchKey = "ledger.auto-ledger.pending-launch.v1"
     private static let shortcutStatusKey = "ledger.auto-ledger.shortcut-status.v1"
+    private static let debugSnapshotKey = "ledger.auto-ledger.debug-snapshot.v1"
     private static let incomingFolderName = "AutoLedgerIncoming"
 
     private static let encoder: JSONEncoder = {
@@ -186,6 +187,16 @@ enum AutoLedgerHandoffStore {
         return status
     }
 
+    static func saveDebugSnapshot(_ snapshot: AutoLedgerDebugSnapshot) {
+        guard let data = try? encoder.encode(snapshot) else { return }
+        defaults.set(data, forKey: debugSnapshotKey)
+    }
+
+    static func loadDebugSnapshot() -> AutoLedgerDebugSnapshot? {
+        guard let data = defaults.data(forKey: debugSnapshotKey) else { return nil }
+        return try? decoder.decode(AutoLedgerDebugSnapshot.self, from: data)
+    }
+
     private static func savePayload(_ payload: AutoLedgerLaunchPayload) {
         guard let data = try? encoder.encode(payload) else { return }
         defaults.set(data, forKey: pendingLaunchKey)
@@ -267,10 +278,43 @@ private enum AutoLedgerDirectRunner {
             ocrTextHint: normalizedOCRTextHint)
 
         let service = AutoLedgerServiceFactory.make()
-        let result = try await service.parseReceipt(request)
-        let dialog = try AutoLedgerDirectSaver.save(result: result, into: snapshot)
-        AutoLedgerHandoffStore.markLastRunSucceeded()
-        return dialog
+        let debugRequestSummary = buildRequestSummary(request, source: source)
+        let ocrPreview = debugPreview(normalizedOCRTextHint)
+        let shouldPersistDirectDebugSnapshot = service.recognitionEngine == .local
+        do {
+            let result = try await service.parseReceipt(request)
+            if shouldPersistDirectDebugSnapshot {
+                AutoLedgerHandoffStore.saveDebugSnapshot(
+                    AutoLedgerDebugSnapshot(
+                        timestamp: Date(),
+                        engine: "local",
+                        endpoint: nil,
+                        model: nil,
+                        requestSummary: debugRequestSummary,
+                        rawOCRPreview: ocrPreview,
+                        rawResponse: nil,
+                        parsedResult: result,
+                        errorMessage: nil))
+            }
+            let dialog = try AutoLedgerDirectSaver.save(envelope: result, into: snapshot)
+            AutoLedgerHandoffStore.markLastRunSucceeded()
+            return dialog
+        } catch {
+            if shouldPersistDirectDebugSnapshot {
+                AutoLedgerHandoffStore.saveDebugSnapshot(
+                    AutoLedgerDebugSnapshot(
+                        timestamp: Date(),
+                        engine: "local",
+                        endpoint: nil,
+                        model: nil,
+                        requestSummary: debugRequestSummary,
+                        rawOCRPreview: ocrPreview,
+                        rawResponse: nil,
+                        parsedResult: nil,
+                        errorMessage: error.localizedDescription))
+            }
+            throw error
+        }
     }
 
     private static func makeContext(from snapshot: LedgerPersistenceSnapshot) -> AutoLedgerParseContext {
@@ -309,52 +353,97 @@ private enum AutoLedgerDirectRunner {
 
         return result
     }
+
+    private static func buildRequestSummary(_ request: AutoLedgerParseRequest,
+                                            source: AutoLedgerShortcutSource) -> String {
+        let imageState = request.imageData == nil ? "无图片" : "有图片"
+        let ocrState = request.ocrTextHint?.trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty == false ? "有 OCR hint" : "无 OCR hint"
+        return "source=\(source.rawValue) | \(imageState) | \(ocrState) | currency=\(request.context.currencyCode) | locale=\(request.context.localeIdentifier)"
+    }
+
+    private static func debugPreview(_ text: String?) -> String? {
+        guard let text else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return String(trimmed.prefix(800))
+    }
 }
 
 private enum AutoLedgerDirectSaver {
-    static func save(result: AutoLedgerParseResult, into currentSnapshot: LedgerPersistenceSnapshot) throws -> String {
-        guard let amount = result.amount, amount > 0 else {
+    static func save(envelope: AutoLedgerParseEnvelope,
+                     into currentSnapshot: LedgerPersistenceSnapshot) throws -> String {
+        let validEntries = envelope.entries.filter { ($0.amount ?? 0) > 0 }
+        guard !validEntries.isEmpty else {
             throw AutoLedgerServiceError.parseFailed
         }
 
         var snapshot = currentSnapshot
-        let kind = result.normalizedKind ?? .expense
-        let categories = categories(for: kind, in: snapshot)
-        let category = mapCategory(from: result.category, categories: categories, kind: kind)
-        let paymentMethod = mapPaymentMethod(from: result.paymentMethod, in: snapshot)
-        let merchant = (result.merchant ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let note = (result.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = merchant.isEmpty ? (note.isEmpty ? category.name : note) : merchant
         let bookID = resolvedBookID(in: snapshot)
+        var savedCount = 0
+        var primaryTitle: String?
+        var primaryAmount: Double?
+        var primaryCategory: LedgerCategory?
+        let primaryCandidate = envelope.primaryEntry
 
-        snapshot.entries.insert(
-            LedgerEntry(
-                bookID: bookID,
-                title: title,
-                amount: amount,
-                kind: kind,
-                category: category,
-                paymentMethod: paymentMethod,
-                note: note,
-                date: result.occurredAt),
-            at: 0)
+        if let primaryCandidate, let amount = primaryCandidate.amount, amount > 0 {
+            let kind = primaryCandidate.normalizedKind ?? .expense
+            let categories = categories(for: kind, in: snapshot)
+            let category = mapCategory(from: primaryCandidate.category, categories: categories, kind: kind)
+            let merchant = (primaryCandidate.merchant ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let note = (primaryCandidate.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            primaryTitle = merchant.isEmpty ? (note.isEmpty ? category.name : note) : merchant
+            primaryAmount = amount
+            primaryCategory = category
+        }
+
+        for entry in validEntries {
+            let kind = entry.normalizedKind ?? .expense
+            let categories = categories(for: kind, in: snapshot)
+            let category = mapCategory(from: entry.category, categories: categories, kind: kind)
+            let paymentMethod = mapPaymentMethod(from: entry.paymentMethod, in: snapshot)
+            let merchant = (entry.merchant ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let note = (entry.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = merchant.isEmpty ? (note.isEmpty ? category.name : note) : merchant
+            let amount = entry.amount ?? 0
+
+            snapshot.entries.insert(
+                LedgerEntry(
+                    bookID: bookID,
+                    title: title,
+                    amount: amount,
+                    kind: kind,
+                    category: category,
+                    paymentMethod: paymentMethod,
+                    note: note,
+                    date: entry.occurredAt),
+                at: 0)
+
+            savedCount += 1
+        }
+
+        if primaryTitle == nil, let firstEntry = validEntries.first {
+            let kind = firstEntry.normalizedKind ?? .expense
+            let categories = categories(for: kind, in: snapshot)
+            let category = mapCategory(from: firstEntry.category, categories: categories, kind: kind)
+            let merchant = (firstEntry.merchant ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let note = (firstEntry.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            primaryTitle = merchant.isEmpty ? (note.isEmpty ? category.name : note) : merchant
+            primaryAmount = firstEntry.amount ?? 0
+            primaryCategory = category
+        }
 
         snapshot.appSettings.hasAcknowledgedShortcutInstall = true
         snapshot.appSettings.lastShortcutEducationState = .usage
         LedgerPersistenceStore.savePersistedState(snapshot)
         LedgerPersistenceStore.saveAppSettings(snapshot.appSettings)
 
-        var summary = "已自动入账：\(LedgerFormatters.currency(amount))"
-        if !merchant.isEmpty {
-            summary += " · \(merchant)"
-        } else {
-            summary += " · \(category.name)"
-        }
+        let summaryTitle = primaryTitle ?? (primaryCategory?.name ?? "账单")
+        let summaryAmount = primaryAmount ?? 0
+        var summary = "已自动入账 \(savedCount) 笔：\(LedgerFormatters.currency(summaryAmount)) · \(summaryTitle)"
 
-        if (result.recognizedEntryCount ?? 1) > 1 {
-            summary += "。已从多笔候选里优先选择一笔。"
-        } else if result.confidence < 0.65 {
-            summary += "。识别置信度偏低，请回本地记账核对。"
+        if validEntries.contains(where: { $0.confidence < 0.65 }) {
+            summary += "。部分记录置信度偏低，请回本地记账核对。"
         } else {
             summary += "。"
         }

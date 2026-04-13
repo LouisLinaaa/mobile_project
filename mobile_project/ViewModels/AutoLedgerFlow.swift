@@ -8,12 +8,12 @@ enum AutoLedgerRecognitionEngine {
 
 protocol AutoLedgerServiceProtocol {
     var recognitionEngine: AutoLedgerRecognitionEngine { get }
-    func parseReceipt(_ request: AutoLedgerParseRequest) async throws -> AutoLedgerParseResult
+    func parseReceipt(_ request: AutoLedgerParseRequest) async throws -> AutoLedgerParseEnvelope
 }
 
 enum AutoLedgerServiceEnvironment {
     case local
-    case gateway(AutoLedgerLLMConfiguration)
+    case gateway(AutoLedgerOpenAIConfiguration)
 }
 
 enum AutoLedgerServiceError: LocalizedError {
@@ -46,7 +46,7 @@ struct AutoLedgerServiceFactory {
     }
 
     private static func configuredEnvironment(bundle: Bundle = .main) -> AutoLedgerServiceEnvironment? {
-        guard let configuration = AutoLedgerLLMConfiguration.load(bundle: bundle) else {
+        guard let configuration = AutoLedgerOpenAIConfiguration.load(bundle: bundle) else {
             return nil
         }
 
@@ -57,7 +57,7 @@ struct AutoLedgerServiceFactory {
 struct LocalAutoLedgerService: AutoLedgerServiceProtocol {
     let recognitionEngine: AutoLedgerRecognitionEngine = .local
 
-    func parseReceipt(_ request: AutoLedgerParseRequest) async throws -> AutoLedgerParseResult {
+    func parseReceipt(_ request: AutoLedgerParseRequest) async throws -> AutoLedgerParseEnvelope {
         if let localResult = try await AutoLedgerLocalRecognizer.parse(request) {
             return localResult
         }
@@ -148,7 +148,7 @@ private enum AutoLedgerLocalRecognizer {
         "yyyy年M月d日 HH:mm"
     ]
 
-    static func parse(_ request: AutoLedgerParseRequest) async throws -> AutoLedgerParseResult? {
+    static func parse(_ request: AutoLedgerParseRequest) async throws -> AutoLedgerParseEnvelope? {
         let mergedText = await AutoLedgerOCRTextExtractor.mergedText(from: request)
         let lines = normalizedLines(from: mergedText)
 
@@ -187,7 +187,7 @@ private enum AutoLedgerLocalRecognizer {
 
         guard let primaryCandidate else { return nil }
 
-        return AutoLedgerParseResult(
+        let entry = AutoLedgerParseEntry(
             amount: primaryCandidate.amount,
             kind: kind.rawValue,
             category: category,
@@ -199,6 +199,11 @@ private enum AutoLedgerLocalRecognizer {
             confidence: confidence,
             reason: reason,
             recognizedEntryCount: recognizedEntryCount)
+
+        return AutoLedgerParseEnvelope(
+            entries: [entry],
+            recognizedEntryCount: recognizedEntryCount,
+            primaryIndex: 0)
     }
 
     private static func normalizedLines(from text: String) -> [String] {
@@ -559,14 +564,16 @@ private enum AutoLedgerLocalRecognizer {
 }
 
 final class GatewayAutoLedgerService: AutoLedgerServiceProtocol {
-    private let configuration: AutoLedgerLLMConfiguration
+    private let configuration: AutoLedgerOpenAIConfiguration
     let recognitionEngine: AutoLedgerRecognitionEngine = .gateway
+    var debugEndpoint: String { configuration.endpoint.absoluteString }
+    var debugModel: String { configuration.model }
 
-    init(configuration: AutoLedgerLLMConfiguration) {
+    init(configuration: AutoLedgerOpenAIConfiguration) {
         self.configuration = configuration
     }
 
-    func parseReceipt(_ request: AutoLedgerParseRequest) async throws -> AutoLedgerParseResult {
+    func parseReceipt(_ request: AutoLedgerParseRequest) async throws -> AutoLedgerParseEnvelope {
         var urlRequest = URLRequest(url: configuration.endpoint)
         urlRequest.httpMethod = "POST"
         urlRequest.addValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -582,24 +589,111 @@ final class GatewayAutoLedgerService: AutoLedgerServiceProtocol {
         urlRequest.httpBody = try JSONEncoder().encode(payload)
 
         let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        let rawResponseText = String(data: data, encoding: .utf8)
 
         guard let http = response as? HTTPURLResponse else {
+            AutoLedgerHandoffStore.saveDebugSnapshot(
+                AutoLedgerDebugSnapshot(
+                    timestamp: Date(),
+                    engine: "openai",
+                    endpoint: configuration.endpoint.absoluteString,
+                    model: configuration.model,
+                    requestSummary: "status=invalid-http-response",
+                    rawOCRPreview: mergedOCRText.isEmpty ? nil : String(mergedOCRText.prefix(800)),
+                    rawResponse: rawResponseText,
+                    parsedResult: nil,
+                    errorMessage: AutoLedgerServiceError.invalidResponse.localizedDescription))
             throw AutoLedgerServiceError.invalidResponse
         }
 
         guard (200..<300).contains(http.statusCode) else {
+            AutoLedgerHandoffStore.saveDebugSnapshot(
+                AutoLedgerDebugSnapshot(
+                    timestamp: Date(),
+                    engine: "openai",
+                    endpoint: configuration.endpoint.absoluteString,
+                    model: configuration.model,
+                    requestSummary: "status=\(http.statusCode)",
+                    rawOCRPreview: mergedOCRText.isEmpty ? nil : String(mergedOCRText.prefix(800)),
+                    rawResponse: rawResponseText,
+                    parsedResult: nil,
+                    errorMessage: AutoLedgerServiceError.networkFailure(http.statusCode).localizedDescription))
             throw AutoLedgerServiceError.networkFailure(http.statusCode)
         }
 
-        if let decoded = try? JSONDecoder().decode(AutoLedgerGatewayResponse.self, from: data) {
-            return try decoded.normalizedResult()
+        if let decoded = try? JSONDecoder().decode(AutoLedgerOpenAIChatResponse.self, from: data),
+           let messageContent = decoded.choices.first?.message.content,
+           let result = parseOpenAIResult(from: messageContent) {
+            AutoLedgerHandoffStore.saveDebugSnapshot(
+                AutoLedgerDebugSnapshot(
+                    timestamp: Date(),
+                    engine: "openai",
+                    endpoint: configuration.endpoint.absoluteString,
+                    model: configuration.model,
+                    requestSummary: "status=\(http.statusCode)",
+                    rawOCRPreview: mergedOCRText.isEmpty ? nil : String(mergedOCRText.prefix(800)),
+                    rawResponse: rawResponseText,
+                    parsedResult: result,
+                    errorMessage: nil))
+            return result
         }
 
-        if let directResult = try? JSONDecoder().decode(AutoLedgerParseResult.self, from: data) {
+        if let directResult = try? JSONDecoder().decode(AutoLedgerParseEnvelope.self, from: data) {
+            AutoLedgerHandoffStore.saveDebugSnapshot(
+                AutoLedgerDebugSnapshot(
+                    timestamp: Date(),
+                    engine: "openai",
+                    endpoint: configuration.endpoint.absoluteString,
+                    model: configuration.model,
+                    requestSummary: "status=\(http.statusCode)",
+                    rawOCRPreview: mergedOCRText.isEmpty ? nil : String(mergedOCRText.prefix(800)),
+                    rawResponse: rawResponseText,
+                    parsedResult: directResult,
+                    errorMessage: nil))
             return directResult
         }
 
+        AutoLedgerHandoffStore.saveDebugSnapshot(
+            AutoLedgerDebugSnapshot(
+                timestamp: Date(),
+                engine: "openai",
+                endpoint: configuration.endpoint.absoluteString,
+                model: configuration.model,
+                requestSummary: "status=\(http.statusCode)",
+                rawOCRPreview: mergedOCRText.isEmpty ? nil : String(mergedOCRText.prefix(800)),
+                rawResponse: rawResponseText,
+                parsedResult: nil,
+                errorMessage: AutoLedgerServiceError.invalidResponse.localizedDescription))
         throw AutoLedgerServiceError.invalidResponse
+    }
+
+    private func parseOpenAIResult(from messageContent: String) -> AutoLedgerParseEnvelope? {
+        let trimmed = messageContent.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let data = trimmed.data(using: .utf8) else { return nil }
+
+        if let parsed = try? JSONDecoder().decode(AutoLedgerParseEnvelope.self, from: data) {
+            return parsed
+        }
+
+        if let wrapped = try? JSONDecoder().decode(AutoLedgerOpenAIEnvelopeWrapper.self, from: data) {
+            return wrapped.result
+        }
+
+        if let wrapped = try? JSONDecoder().decode(AutoLedgerOpenAIEntryWrapper.self, from: data) {
+            return AutoLedgerParseEnvelope(
+                entries: [wrapped.result],
+                recognizedEntryCount: wrapped.result.recognizedEntryCount,
+                primaryIndex: 0)
+        }
+
+        if let parsed = try? JSONDecoder().decode(AutoLedgerParseEntry.self, from: data) {
+            return AutoLedgerParseEnvelope(
+                entries: [parsed],
+                recognizedEntryCount: parsed.recognizedEntryCount,
+                primaryIndex: 0)
+        }
+
+        return nil
     }
 }
 
@@ -664,6 +758,7 @@ final class AutoLedgerViewModel: ObservableObject {
     @Published var isBackTapExpanded = false
     @Published var isControlCenterExpanded = false
     @Published var shortcutStatus: AutoLedgerShortcutRunStatus = AutoLedgerHandoffStore.loadStatus()
+    @Published var debugSnapshot: AutoLedgerDebugSnapshot? = AutoLedgerHandoffStore.loadDebugSnapshot()
 
     private let service: any AutoLedgerServiceProtocol
     private let screenshotCache: AutoLedgerScreenshotCache
@@ -695,9 +790,9 @@ final class AutoLedgerViewModel: ObservableObject {
     var recognitionEngineSubtitle: String {
         switch recognitionEngine {
         case .gateway:
-            "快捷指令会直接完成识别与自动入账，截图和 OCR 会一起交给大模型网关。"
+            "快捷指令会直接完成识别与自动入账，截图和 OCR 会一起交给 OpenAI 接口。"
         case .local:
-            "当前还没配置大模型识别，先使用本地 OCR 兜底。把 LLM 配置补齐后会优先切到 API 识别。"
+            "当前还没配置大模型识别，先使用本地 OCR 兜底。把 OPENAI 配置补齐后会优先切到 API 识别。"
         }
     }
 
@@ -805,6 +900,7 @@ final class AutoLedgerViewModel: ObservableObject {
 
     func refreshShortcutStatus() {
         shortcutStatus = AutoLedgerHandoffStore.loadStatus()
+        debugSnapshot = AutoLedgerHandoffStore.loadDebugSnapshot()
     }
 
     func shortcutSetupState(in store: LedgerStore) -> AutoLedgerShortcutSetupState {
@@ -868,25 +964,28 @@ final class AutoLedgerViewModel: ObservableObject {
             paymentMethodCandidates: store.paymentMethods)
     }
 
-    private func makeReviewDraft(from result: AutoLedgerParseResult, store: LedgerStore) -> AutoLedgerReviewDraft {
-        let kind = result.normalizedKind ?? .expense
+    private func makeReviewDraft(
+        from entry: AutoLedgerParseEntry,
+        recognizedEntryCount: Int,
+        store: LedgerStore) -> AutoLedgerReviewDraft {
+        let kind = entry.normalizedKind ?? .expense
         let categories = store.categories(for: kind)
-        let category = mapCategory(from: result.category, categories: categories, kind: kind)
+        let category = mapCategory(from: entry.category, categories: categories, kind: kind)
 
-        let paymentMethod = mapPaymentMethod(from: result.paymentMethod, store: store)
+        let paymentMethod = mapPaymentMethod(from: entry.paymentMethod, store: store)
 
         return AutoLedgerReviewDraft(
-            amountText: formattedAmountText(result.amount),
+            amountText: formattedAmountText(entry.amount),
             kind: kind,
             categoryID: category.id,
             paymentMethod: paymentMethod,
-            occurredAt: result.occurredAt,
-            merchant: result.merchant ?? "",
-            note: result.note ?? "",
-            rawText: result.rawText,
-            confidence: result.confidence,
-            reason: result.reason,
-            recognizedEntryCount: max(1, result.recognizedEntryCount ?? 1))
+            occurredAt: entry.occurredAt,
+            merchant: entry.merchant ?? "",
+            note: entry.note ?? "",
+            rawText: entry.rawText,
+            confidence: entry.confidence,
+            reason: entry.reason,
+            recognizedEntryCount: max(1, recognizedEntryCount))
     }
 
     private func mapCategory(from hint: String?, categories: [LedgerCategory], kind: LedgerKind) -> LedgerCategory {
@@ -1039,9 +1138,16 @@ final class AutoLedgerViewModel: ObservableObject {
             ocrTextHint: normalizedOCRTextHint)
 
         let result = try await service.parseReceipt(request)
-        reviewDraft = makeReviewDraft(from: result, store: store)
+        guard let primaryEntry = result.primaryEntry else {
+            throw AutoLedgerServiceError.parseFailed
+        }
 
-        guard result.amount != nil else {
+        reviewDraft = makeReviewDraft(
+            from: primaryEntry,
+            recognizedEntryCount: result.totalRecognizedCount,
+            store: store)
+
+        guard primaryEntry.amount != nil else {
             throw AutoLedgerServiceError.parseFailed
         }
 

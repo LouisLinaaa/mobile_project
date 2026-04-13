@@ -11,7 +11,7 @@ struct MobileProjectApp: App {
                 .environmentObject(store)
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {
-                        store.refreshAutoLedgerShortcutState()
+                        store.reloadPersistedStateIfAvailable()
                     } else if newPhase == .inactive || newPhase == .background {
                         store.flushPendingSettingsPersistence()
                     }

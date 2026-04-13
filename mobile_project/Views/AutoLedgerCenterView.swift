@@ -7,6 +7,7 @@ struct AutoLedgerCenterView: View {
     @StateObject private var viewModel = AutoLedgerViewModel()
     @State private var helperMessage: String?
     @State private var isBlueprintPresented = false
+    @State private var isDebugExpanded = false
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -74,7 +75,7 @@ struct AutoLedgerCenterView: View {
 
             if viewModel.recognitionEngine == .local {
                 Text(
-                    "当前还没配置大模型识别。把 `.env.template` 里的 `AUTO_LEDGER_LLM_*` 变量填到 Scheme 环境变量或 Info.plist 后，会自动切到 API 识别。")
+                    "当前还没配置大模型识别。把 `.env.template` 里的 `AUTO_LEDGER_OPENAI_*` 变量填到 Scheme 环境变量或 Info.plist 后，会自动切到 API 识别。")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.ledgerGold)
                     .padding(12)
@@ -211,6 +212,10 @@ struct AutoLedgerCenterView: View {
                     isBlueprintPresented = true
                 }
             }
+
+            if let debugSnapshot = viewModel.debugSnapshot {
+                debugCard(debugSnapshot)
+            }
         }
         .padding(20)
         .ledgerCard()
@@ -234,6 +239,68 @@ struct AutoLedgerCenterView: View {
 
     private var engineTint: Color {
         viewModel.recognitionEngine == .gateway ? .ledgerIncome : .ledgerGold
+    }
+
+    private func debugCard(_ snapshot: AutoLedgerDebugSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isDebugExpanded.toggle()
+                }
+            } label: {
+                HStack {
+                    Text("最近调用")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.ledgerText)
+
+                    Spacer()
+
+                    Text(LedgerFormatters.shortTimestamp(snapshot.timestamp))
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.ledgerMuted)
+
+                    Image(systemName: isDebugExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color.ledgerAccent)
+                }
+            }
+            .buttonStyle(.plain)
+
+            debugRow(label: "引擎", value: snapshot.engine)
+
+            if let model = snapshot.model {
+                debugRow(label: "模型", value: model)
+            }
+
+            if let endpoint = snapshot.endpoint {
+                debugRow(label: "端点", value: endpoint)
+            }
+
+            if isDebugExpanded {
+                debugSection(title: "请求摘要", content: snapshot.requestSummary)
+
+                if let rawOCRPreview = snapshot.rawOCRPreview {
+                    debugSection(title: "OCR 摘要", content: rawOCRPreview)
+                }
+
+                if let rawResponse = snapshot.rawResponse {
+                    debugSection(title: "原始返回全文", content: rawResponse)
+                }
+
+                if let parsedResult = snapshot.parsedResult,
+                   let parsedData = try? JSONEncoder().encode(parsedResult),
+                   let parsedText = String(data: parsedData, encoding: .utf8) {
+                    debugSection(title: "解析结果", content: parsedText)
+                }
+
+                if let errorMessage = snapshot.errorMessage {
+                    debugSection(title: "错误", content: errorMessage, tint: .ledgerExpense)
+                }
+            }
+        }
+        .padding(14)
+        .background(Color.ledgerAccentSoft.opacity(0.32))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private func openShortcutEditor() {
@@ -270,6 +337,37 @@ struct AutoLedgerCenterView: View {
                     helperMessage = nil
                 }
             })
+    }
+}
+
+private func debugRow(label: String, value: String) -> some View {
+    HStack(alignment: .top, spacing: 10) {
+        Text(label)
+            .font(.system(size: 13, weight: .bold, design: .rounded))
+            .foregroundStyle(Color.ledgerMuted)
+            .frame(width: 44, alignment: .leading)
+
+        Text(value)
+            .font(.system(size: 13, weight: .medium, design: .rounded))
+            .foregroundStyle(Color.ledgerText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private func debugSection(title: String, content: String, tint: Color = .ledgerText) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+        Text(title)
+            .font(.system(size: 13, weight: .bold, design: .rounded))
+            .foregroundStyle(Color.ledgerMuted)
+
+        Text(content)
+            .font(.system(size: 12, weight: .medium, design: .monospaced))
+            .foregroundStyle(tint)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
+            .background(.white.opacity(0.92))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .textSelection(.enabled)
     }
 }
 

@@ -498,6 +498,12 @@ final class LedgerStore: ObservableObject {
         autoLedgerShortcutStatus = AutoLedgerHandoffStore.loadStatus()
     }
 
+    func reloadPersistedStateIfAvailable() {
+        restorePersistedStateIfAvailable()
+        refreshAutoLedgerShortcutState()
+        syncWidgetSnapshot()
+    }
+
     func consumeAutoLedgerPendingLaunch() -> AutoLedgerLaunchPayload? {
         let payload = AutoLedgerHandoffStore.consumePendingLaunch()
         autoLedgerPendingLaunch = nil

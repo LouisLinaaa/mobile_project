@@ -51,7 +51,8 @@ struct QuickAddSheet: View {
             }
         }
         .onChange(of: draft.kind) { _, _ in
-            draft.selectedCategory = store.categories(for: draft.kind).first ?? LedgerCategory.defaultCategory(for: draft.kind)
+            draft.selectedCategory = store.categories(for: draft.kind).first ?? LedgerCategory
+                .defaultCategory(for: draft.kind)
         }
     }
 
@@ -124,12 +125,13 @@ struct QuickAddSheet: View {
                         .frame(maxWidth: .infinity)
                         .background(
                             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                .fill(draft.selectedCategory.id == category.id ? category.tint.opacity(0.12) : Color.white)
+                                .fill(draft.selectedCategory.id == category.id ? category.tint.opacity(0.12) : Color
+                                    .white)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                        .stroke(draft.selectedCategory.id == category.id ? category.tint : Color.clear, lineWidth: 1.4)
-                                )
-                        )
+                                        .stroke(
+                                            draft.selectedCategory.id == category.id ? category.tint : Color.clear,
+                                            lineWidth: 1.4)))
                     }
                     .buttonStyle(.plain)
                 }

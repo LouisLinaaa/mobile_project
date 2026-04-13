@@ -103,7 +103,7 @@ struct AutoLedgerParseRequest {
     let ocrTextHint: String?
 }
 
-struct AutoLedgerParseResult: Codable {
+struct AutoLedgerParseEntry: Codable {
     let amount: Double?
     let kind: String?
     let category: String?
@@ -140,6 +140,24 @@ struct AutoLedgerParseResult: Codable {
         formatter.locale = LedgerFormatters.locale
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return formatter.date(from: time) ?? Date()
+    }
+}
+
+struct AutoLedgerParseEnvelope: Codable {
+    let entries: [AutoLedgerParseEntry]
+    let recognizedEntryCount: Int?
+    let primaryIndex: Int?
+
+    var primaryEntry: AutoLedgerParseEntry? {
+        guard !entries.isEmpty else { return nil }
+        if let primaryIndex, entries.indices.contains(primaryIndex) {
+            return entries[primaryIndex]
+        }
+        return entries.first
+    }
+
+    var totalRecognizedCount: Int {
+        recognizedEntryCount ?? entries.count
     }
 }
 
@@ -202,29 +220,96 @@ struct AutoLedgerShortcutStatusPresentation {
     let tint: String
 }
 
-struct AutoLedgerGatewayRequestBody: Encodable {
-    let model: String
-    let systemPrompt: String
-    let userPrompt: String
-    let rawOCR: String?
-    let imageBase64: String?
+struct AutoLedgerDebugSnapshot: Codable {
+    let timestamp: Date
+    let engine: String
+    let endpoint: String?
+    let model: String?
+    let requestSummary: String
+    let rawOCRPreview: String?
+    let rawResponse: String?
+    let parsedResult: AutoLedgerParseEnvelope?
+    let errorMessage: String?
 }
 
-struct AutoLedgerGatewayResponse: Decodable {
-    let result: AutoLedgerParseResult?
-    let resultJSON: String?
+struct AutoLedgerOpenAIRequestBody: Encodable {
+    let model: String
+    let messages: [AutoLedgerOpenAIChatMessage]
+    let responseFormat: AutoLedgerOpenAIResponseFormat?
+    let extraBody: AutoLedgerOpenAIExtraBody?
 
-    func normalizedResult() throws -> AutoLedgerParseResult {
-        if let result {
-            return result
-        }
-
-        if let resultJSON,
-           let data = resultJSON.data(using: .utf8),
-           let parsed = try? JSONDecoder().decode(AutoLedgerParseResult.self, from: data) {
-            return parsed
-        }
-
-        throw AutoLedgerServiceError.invalidResponse
+    enum CodingKeys: String, CodingKey {
+        case model
+        case messages
+        case responseFormat = "response_format"
+        case extraBody = "extra_body"
     }
+}
+
+struct AutoLedgerOpenAIResponseFormat: Encodable {
+    let type: String
+}
+
+struct AutoLedgerOpenAIExtraBody: Encodable {
+    let enableThinking: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case enableThinking = "enable_thinking"
+    }
+}
+
+struct AutoLedgerOpenAIChatMessage: Encodable {
+    let role: String
+    let content: AutoLedgerOpenAIMessageContent
+}
+
+enum AutoLedgerOpenAIMessageContent: Encodable {
+    case text(String)
+    case parts([AutoLedgerOpenAIContentPart])
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .text(let value):
+            try container.encode(value)
+        case .parts(let parts):
+            try container.encode(parts)
+        }
+    }
+}
+
+struct AutoLedgerOpenAIContentPart: Encodable {
+    let type: String
+    let text: String?
+    let imageURL: AutoLedgerOpenAIImageURL?
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case text
+        case imageURL = "image_url"
+    }
+}
+
+struct AutoLedgerOpenAIImageURL: Encodable {
+    let url: String
+}
+
+struct AutoLedgerOpenAIChatResponse: Decodable {
+    let choices: [AutoLedgerOpenAIChatChoice]
+}
+
+struct AutoLedgerOpenAIChatChoice: Decodable {
+    let message: AutoLedgerOpenAIChatMessageResponse
+}
+
+struct AutoLedgerOpenAIChatMessageResponse: Decodable {
+    let content: String?
+}
+
+struct AutoLedgerOpenAIEntryWrapper: Decodable {
+    let result: AutoLedgerParseEntry
+}
+
+struct AutoLedgerOpenAIEnvelopeWrapper: Decodable {
+    let result: AutoLedgerParseEnvelope
 }
