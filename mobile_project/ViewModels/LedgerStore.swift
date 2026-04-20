@@ -532,6 +532,43 @@ final class LedgerStore: ObservableObject {
         entries.insert(entry, at: 0)
     }
 
+    // MARK: - AI Draft Hand-off
+
+    var pendingAIDraft: QuickEntryDraft?
+
+    func makeDraftWithAI() -> QuickEntryDraft {
+        if let ai = pendingAIDraft {
+            pendingAIDraft = nil
+            return ai
+        }
+        return makeDraft()
+    }
+
+    // MARK: - CSV Import (bookID-aware addEntry)
+
+    func addEntry(
+        bookID: UUID,
+        title: String,
+        amount: Double,
+        kind: LedgerKind,
+        category: LedgerCategory,
+        paymentMethod: String,
+        note: String,
+        date: Date
+    ) {
+        let entry = LedgerEntry(
+            bookID: bookID,
+            title: title,
+            amount: amount,
+            kind: kind,
+            category: category,
+            paymentMethod: paymentMethod,
+            note: note,
+            date: date
+        )
+        entries.insert(entry, at: 0)
+    }
+
     func isInCurrentStatisticsMonth(_ date: Date) -> Bool {
         let interval = currentStatisticsMonthInterval
         return interval.contains(date)

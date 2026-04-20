@@ -708,10 +708,10 @@ extension DrawerShortcut {
     static let quickTools: [DrawerShortcut] = [
         DrawerShortcut(
             id: "import",
-            title: "导入导出",
-            icon: "square.and.arrow.down",
+            title: "导入 / 导出",
+            icon: "square.and.arrow.up.on.square",
             accent: .ledgerAccent,
-            destination: .placeholder("导入导出")),
+            destination: .screen(.csvImportExport)),
         DrawerShortcut(
             id: "automation",
             title: "自动记账",

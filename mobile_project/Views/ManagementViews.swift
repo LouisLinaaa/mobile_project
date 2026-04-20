@@ -1,5 +1,6 @@
 import Charts
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum ManagementScreen: String, Identifiable {
     case statistics
@@ -8,6 +9,7 @@ enum ManagementScreen: String, Identifiable {
     case books
     case categories
     case autoLedgerCenter
+    case csvImportExport
     case widgets
     case settings
     case backup
@@ -50,6 +52,8 @@ struct ManagementSheetView: View {
             CategoryManagementView()
         case .autoLedgerCenter:
             AutoLedgerCenterView()
+        case .csvImportExport:
+            CSVImportExportView()
         case .widgets:
             WidgetCenterView()
         case .settings:
@@ -2081,5 +2085,355 @@ private struct AboutAppView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - CSV Import / Export (embedded so no separate target membership needed)
+
+private enum CSVError: LocalizedError {
+    case invalidFormat(String)
+    case emptyFile
+    case encodingFailed
+
+    var errorDescription: String? {
+        switch self {
+        case let .invalidFormat(msg): return "格式错误：\(msg)"
+        case .emptyFile: return "文件为空或没有有效数据"
+        case .encodingFailed: return "文件编码失败，请重试"
+        }
+    }
+}
+
+private struct CSVParseResult {
+    let succeeded: [LedgerEntry]
+    let failed: [(row: Int, reason: String)]
+    let skipped: Int
+}
+
+private enum CSVService {
+    static func exportCSV(entries: [LedgerEntry], book: LedgerBook) -> String {
+        var lines = ["日期,类型,金额,分类,支付方式,备注,账本"]
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withFullDate]
+        for e in entries.sorted(by: { $0.date > $1.date }) {
+            lines.append("\(fmt.string(from: e.date)),\(e.kind == .expense ? "支出" : "收入"),\(String(format: "%.2f", e.amount)),\(esc(e.category.name)),\(esc(e.paymentMethod)),\(esc(e.note.isEmpty ? e.title : e.note)),\(esc(book.name))")
+        }
+        return "\u{FEFF}" + lines.joined(separator: "\n")
+    }
+
+    static func parseCSV(_ csv: String, bookID: UUID, scheme: LedgerCategoryScheme) -> CSVParseResult {
+        var content = csv.hasPrefix("\u{FEFF}") ? String(csv.dropFirst()) : csv
+        let rows = content.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        guard rows.count > 1 else { return CSVParseResult(succeeded: [], failed: [(1, "文件为空")], skipped: 0) }
+        let allCats = scheme.expenseCategories + scheme.incomeCategories
+        let fmt = ISO8601DateFormatter(); fmt.formatOptions = [.withFullDate]
+        var ok: [LedgerEntry] = []; var bad: [(Int, String)] = []
+        for (i, line) in rows.dropFirst().enumerated() {
+            let row = i + 2; let cols = parseLine(line)
+            guard cols.count >= 5 else { bad.append((row, "列数不足")); continue }
+            guard let date = fmt.date(from: cols[0]) else { bad.append((row, "日期无效：\(cols[0])")); continue }
+            let kind: LedgerKind
+            if cols[1] == "支出" || cols[1].lowercased() == "expense" { kind = .expense }
+            else if cols[1] == "收入" || cols[1].lowercased() == "income" { kind = .income }
+            else { bad.append((row, "类型无效：\(cols[1])")); continue }
+            let amtStr = cols[2].replacingOccurrences(of: "¥", with: "").replacingOccurrences(of: ",", with: "")
+            guard let amt = Double(amtStr), amt > 0 else { bad.append((row, "金额无效：\(cols[2])")); continue }
+            let cat = allCats.first { $0.kind == kind && $0.name == cols[3] } ?? LedgerCategory.defaultCategory(for: kind)
+            let pay = cols.count > 4 ? cols[4] : "其他"
+            let note = cols.count > 5 ? cols[5] : ""
+            ok.append(LedgerEntry(bookID: bookID, title: note.isEmpty ? cols[3] : note, amount: amt, kind: kind, category: cat, paymentMethod: pay.isEmpty ? "其他" : pay, note: note, date: date))
+        }
+        return CSVParseResult(succeeded: ok, failed: bad, skipped: 0)
+    }
+
+    private static func esc(_ v: String) -> String {
+        (v.contains(",") || v.contains("\"") || v.contains("\n")) ? "\"\(v.replacingOccurrences(of: "\"", with: "\"\""))\"" : v
+    }
+
+    private static func parseLine(_ line: String) -> [String] {
+        var res: [String] = []; var cur = ""; var inQ = false; var i = line.startIndex
+        while i < line.endIndex {
+            let ch = line[i]
+            if ch == "\"" {
+                let next = line.index(after: i)
+                if inQ && next < line.endIndex && line[next] == "\"" { cur.append("\""); i = next }
+                else { inQ.toggle() }
+            } else if ch == "," && !inQ { res.append(cur); cur = "" }
+            else { cur.append(ch) }
+            i = line.index(after: i)
+        }
+        res.append(cur); return res
+    }
+}
+
+private struct CSVFile: FileDocument {
+    static var readableContentTypes: [UTType] { [.commaSeparatedText, .plainText] }
+    var content: String
+    init(content: String) { self.content = content }
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents,
+              let s = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1)
+        else { throw CSVError.encodingFailed }
+        content = s
+    }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        guard let d = content.data(using: .utf8) else { throw CSVError.encodingFailed }
+        return FileWrapper(regularFileWithContents: d)
+    }
+}
+
+struct CSVImportExportView: View {
+    @EnvironmentObject private var store: LedgerStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var activeTab: Tab = .export
+    @State private var scope: Scope = .currentBook
+    @State private var range: Range = .allTime
+    @State private var exportFile: CSVFile?
+    @State private var showExportShare = false
+    @State private var isImporting = false
+    @State private var importResult: CSVParseResult?
+    @State private var showImportConfirm = false
+    @State private var isProcessing = false
+    @State private var importSuccess = false
+    @State private var errorMessage: String?
+
+    private enum Tab: String, CaseIterable { case export = "导出"; case `import` = "导入" }
+    private enum Scope: String, CaseIterable { case currentBook = "当前账本"; case allBooks = "全部账本" }
+    private enum Range: String, CaseIterable { case thisMonth = "本月"; case last3Months = "近3个月"; case thisYear = "今年"; case allTime = "全部" }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 20) {
+                tabBar.padding(.top, 4)
+                if activeTab == .export { exportTab } else { importTab }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 40)
+        }
+        .background(Color.ledgerCanvas.ignoresSafeArea())
+        .navigationTitle("导入 / 导出")
+        .fileExporter(isPresented: $showExportShare, document: exportFile,
+                      contentType: .commaSeparatedText, defaultFilename: exportName) { r in
+            if case .failure = r { errorMessage = "导出失败，请重试" }
+        }
+        .fileImporter(isPresented: $isImporting,
+                      allowedContentTypes: [.commaSeparatedText, .plainText],
+                      allowsMultipleSelection: false, onCompletion: handleImport)
+        .confirmationDialog(confirmTitle, isPresented: $showImportConfirm, titleVisibility: .visible) {
+            if let r = importResult, !r.succeeded.isEmpty {
+                Button("确认导入 \(r.succeeded.count) 条") { commitImport(r) }
+            }
+            Button("取消", role: .cancel) { importResult = nil }
+        } message: { if let r = importResult { Text(confirmMessage(r)) } }
+        .alert("错误", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("好的") { errorMessage = nil }
+        } message: { Text(errorMessage ?? "") }
+    }
+
+    // MARK: Tab bar
+    private var tabBar: some View {
+        HStack(spacing: 0) {
+            ForEach(Tab.allCases, id: \.self) { t in
+                Button { withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) { activeTab = t } } label: {
+                    Text(t.rawValue)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(activeTab == t ? .white : Color.ledgerMuted)
+                        .frame(maxWidth: .infinity).padding(.vertical, 10)
+                        .background(activeTab == t ? RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.ledgerAccent) : RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.clear))
+                }.buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.ledgerAccentMuted))
+    }
+
+    // MARK: Export tab
+    private var exportTab: some View {
+        let entries = filtered()
+        return VStack(spacing: 16) {
+            // Scope picker
+            VStack(alignment: .leading, spacing: 0) {
+                header("导出范围", icon: "books.vertical.fill")
+                ForEach(Scope.allCases, id: \.self) { s in
+                    optionRow(title: s.rawValue,
+                              subtitle: s == .currentBook ? store.currentBook.name : "共 \(store.books.count) 个账本",
+                              selected: scope == s) { scope = s }
+                    if s != Scope.allCases.last { Divider().padding(.leading, 52) }
+                }
+            }.ledgerCard()
+
+            // Range picker
+            VStack(alignment: .leading, spacing: 0) {
+                header("时间范围", icon: "calendar")
+                ForEach(Range.allCases, id: \.self) { r in
+                    let cnt = filtered(scope: scope, range: r).count
+                    optionRow(title: r.rawValue, subtitle: "\(cnt) 条记录", selected: range == r) { range = r }
+                    if r != Range.allCases.last { Divider().padding(.leading, 52) }
+                }
+            }.ledgerCard()
+
+            // Summary
+            HStack(spacing: 0) {
+                statBlock("\(entries.count)", label: "记录数", color: .ledgerAccent)
+                Divider().frame(height: 40)
+                statBlock(LedgerFormatters.currency(entries.filter { $0.kind == .expense }.reduce(0) { $0 + $1.amount }), label: "总支出", color: .ledgerExpense)
+                Divider().frame(height: 40)
+                statBlock(LedgerFormatters.currency(entries.filter { $0.kind == .income }.reduce(0) { $0 + $1.amount }), label: "总收入", color: .ledgerIncome)
+            }.padding(.vertical, 16).ledgerCard()
+
+            // Export button
+            Button {
+                exportFile = CSVFile(content: CSVService.exportCSV(entries: entries, book: store.currentBook))
+                showExportShare = true
+            } label: {
+                Label("导出 CSV 文件", systemImage: "square.and.arrow.up")
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white).frame(maxWidth: .infinity).padding(.vertical, 16)
+                    .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(entries.isEmpty ? Color.ledgerMuted : Color.ledgerAccent))
+            }
+            .buttonStyle(LedgerResponsiveButtonStyle())
+            .disabled(entries.isEmpty)
+
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "lightbulb.fill").foregroundStyle(Color.ledgerGold).font(.system(size: 14))
+                Text("导出的 CSV 可直接用 Excel 或 Numbers 打开，也可以重新导入本应用。")
+                    .font(.system(size: 13, weight: .medium, design: .rounded)).foregroundStyle(Color.ledgerMuted)
+            }.padding(14).background(Color.ledgerGold.opacity(0.08)).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    // MARK: Import tab
+    private var importTab: some View {
+        VStack(spacing: 16) {
+            Button { isImporting = true } label: {
+                VStack(spacing: 14) {
+                    ZStack {
+                        Circle().fill(Color.ledgerAccentMuted).frame(width: 72, height: 72)
+                        Image(systemName: "doc.badge.plus").font(.system(size: 30, weight: .semibold)).foregroundStyle(Color.ledgerAccent)
+                    }
+                    VStack(spacing: 4) {
+                        Text("选择 CSV 文件").font(.system(size: 18, weight: .bold, design: .rounded)).foregroundStyle(Color.ledgerText)
+                        Text("支持从本地、iCloud Drive 或其他 App 导入")
+                            .font(.system(size: 13, weight: .medium, design: .rounded)).foregroundStyle(Color.ledgerMuted).multilineTextAlignment(.center)
+                    }
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, 36)
+                .background(RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(Color.ledgerAccent.opacity(0.35), style: StrokeStyle(lineWidth: 2, dash: [8, 5]))
+                    .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(Color.ledgerAccentMuted.opacity(0.4))))
+            }.buttonStyle(.plain)
+
+            if isProcessing {
+                HStack(spacing: 12) { ProgressView(); Text("解析中…").font(.system(size: 15, weight: .medium, design: .rounded)).foregroundStyle(Color.ledgerMuted) }
+                    .frame(maxWidth: .infinity).padding(.vertical, 16).ledgerCard()
+            }
+
+            if importSuccess {
+                Label("导入成功！数据已添加到账本", systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.ledgerIncome)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(16)
+                    .background(Color.ledgerIncome.opacity(0.08)).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                header("CSV 格式说明", icon: "info.circle.fill")
+                ForEach([("日期","YYYY-MM-DD，如 2024-03-15"),("类型","支出 或 收入"),("金额","正数，如 58.00"),("分类","与账本分类匹配"),("支付方式","如 支付宝、微信"),("备注","可选第6列")], id: \.0) { col, desc in
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(col).font(.system(size: 13, weight: .bold, design: .rounded)).foregroundStyle(Color.ledgerAccent).frame(width: 60, alignment: .leading)
+                        Text(desc).font(.system(size: 13, weight: .medium, design: .rounded)).foregroundStyle(Color.ledgerMuted)
+                    }.padding(.horizontal, 16).padding(.vertical, 6)
+                }
+                Spacer().frame(height: 12)
+            }.ledgerCard()
+        }
+    }
+
+    // MARK: Helpers
+    private func header(_ title: String, icon: String) -> some View {
+        Label(title, systemImage: icon)
+            .font(.system(size: 14, weight: .bold, design: .rounded)).foregroundStyle(Color.ledgerMuted)
+            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 6)
+    }
+
+    private func optionRow(title: String, subtitle: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(selected ? Color.ledgerAccent : Color.ledgerAccentMuted).frame(width: 22, height: 22)
+                    if selected { Image(systemName: "checkmark").font(.system(size: 10, weight: .black)).foregroundStyle(.white) }
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 16, weight: .semibold, design: .rounded)).foregroundStyle(Color.ledgerText)
+                    Text(subtitle).font(.system(size: 13, weight: .medium, design: .rounded)).foregroundStyle(Color.ledgerMuted)
+                }
+                Spacer()
+            }.padding(.horizontal, 16).padding(.vertical, 12).contentShape(Rectangle())
+        }.buttonStyle(.plain)
+    }
+
+    private func statBlock(_ value: String, label: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(value).font(.system(size: 16, weight: .bold, design: .rounded)).foregroundStyle(color).lineLimit(1).minimumScaleFactor(0.7)
+            Text(label).font(.system(size: 12, weight: .medium, design: .rounded)).foregroundStyle(Color.ledgerMuted)
+        }.frame(maxWidth: .infinity)
+    }
+
+    private func filtered(scope s: Scope? = nil, range r: Range? = nil) -> [LedgerEntry] {
+        let s = s ?? scope; let r = r ?? range
+        var all = s == .currentBook ? store.entries.filter { $0.bookID == store.currentBook.id } : store.entries
+        let cal = Calendar.current; let now = Date()
+        switch r {
+        case .thisMonth: if let d = cal.date(from: cal.dateComponents([.year, .month], from: now)) { all = all.filter { $0.date >= d } }
+        case .last3Months: if let d = cal.date(byAdding: .month, value: -3, to: now) { all = all.filter { $0.date >= d } }
+        case .thisYear: if let d = cal.date(from: DateComponents(year: cal.component(.year, from: now), month: 1, day: 1)) { all = all.filter { $0.date >= d } }
+        case .allTime: break
+        }
+        return all
+    }
+
+    private var exportName: String {
+        let f = DateFormatter(); f.dateFormat = "yyyyMMdd"; return "ledger_\(f.string(from: Date())).csv"
+    }
+
+    private var confirmTitle: String { importResult?.succeeded.isEmpty == true ? "无法导入" : "解析完成" }
+    private func confirmMessage(_ r: CSVParseResult) -> String {
+        var p: [String] = []
+        if !r.succeeded.isEmpty { p.append("可导入 \(r.succeeded.count) 条") }
+        if !r.failed.isEmpty { p.append("\(r.failed.count) 行失败") }
+        return p.joined(separator: "，")
+    }
+
+    private func handleImport(_ result: Result<[URL], Error>) {
+        guard case let .success(urls) = result, let url = urls.first else {
+            if case let .failure(e) = result { errorMessage = e.localizedDescription }
+            return
+        }
+        isProcessing = true; importSuccess = false
+        Task {
+            do {
+                let ok = url.startAccessingSecurityScopedResource()
+                defer { if ok { url.stopAccessingSecurityScopedResource() } }
+                let data = try Data(contentsOf: url)
+                let str = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
+                guard !str.isEmpty else { throw CSVError.emptyFile }
+                await MainActor.run {
+                    isProcessing = false
+                    importResult = CSVService.parseCSV(str, bookID: store.currentBook.id, scheme: store.currentCategoryScheme)
+                    showImportConfirm = true
+                }
+            } catch {
+                await MainActor.run { isProcessing = false; errorMessage = error.localizedDescription }
+            }
+        }
+    }
+
+    private func commitImport(_ r: CSVParseResult) {
+        for e in r.succeeded {
+            store.addEntry(bookID: e.bookID, title: e.title, amount: e.amount, kind: e.kind,
+                           category: e.category, paymentMethod: e.paymentMethod, note: e.note, date: e.date)
+        }
+        importResult = nil; importSuccess = true
     }
 }

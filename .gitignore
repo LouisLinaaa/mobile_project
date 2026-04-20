@@ -4,3 +4,12 @@ build/
 xcuserdata/
 .codex/
 .DS_Store
+
+._*
+.*
+
+!.env.template
+!.gitignore
+!.swift-version
+!.swiftformat
+!.githooks/
