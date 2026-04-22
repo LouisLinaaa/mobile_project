@@ -448,7 +448,7 @@ private enum AutoLedgerDirectSaver {
         var summary = "已自动入账 \(savedCount) 笔：\(LedgerFormatters.currency(summaryAmount)) · \(summaryTitle)"
 
         if validEntries.contains(where: { $0.confidence < 0.65 }) {
-            summary += "。部分记录置信度偏低，请回本地记账核对。"
+            summary += "。部分记录置信度偏低，请回 Monee 核对。"
         } else {
             summary += "。"
         }

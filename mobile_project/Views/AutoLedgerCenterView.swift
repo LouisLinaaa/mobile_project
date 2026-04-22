@@ -119,7 +119,7 @@ struct AutoLedgerCenterView: View {
                         .font(.system(size: 28, weight: .black, design: .rounded))
                         .foregroundStyle(Color.ledgerText)
 
-                    Text("安装 App 后，系统里可以直接搜到本地记账提供的“识别账单”动作。快捷指令会直接接收截图、完成识别并自动入账，不需要再跳回 App。")
+                    Text("安装 App 后，系统里可以直接搜到 Monee 提供的“识别账单”动作。快捷指令会直接接收截图、完成识别并自动入账，不需要再跳回 App。")
                         .font(.system(size: 15, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.ledgerText.opacity(0.82))
                         .fixedSize(horizontal: false, vertical: true)
@@ -152,12 +152,12 @@ struct AutoLedgerCenterView: View {
         VStack(alignment: .leading, spacing: 16) {
             sectionHeader(
                 title: "怎么用",
-                subtitle: "在快捷指令里新建一条捷径，然后把本地记账的“识别账单”接到截图后面。")
+                subtitle: "在快捷指令里新建一条捷径，然后把 Monee 的“识别账单”接到截图后面。")
 
             shortcutPreview
 
             VStack(alignment: .leading, spacing: 10) {
-                guideLine("新建快捷指令，建议命名成“本地记账-自动记账”。")
+                guideLine("新建快捷指令，建议命名成“Monee-自动记账”。")
                 guideLine("按顺序添加：截图 -> 从截图获取图像 -> 识别账单。")
                 guideLine("“识别账单”的“图片”参数接上一步结果，“运行时显示”建议关闭。")
             }
@@ -469,7 +469,7 @@ private struct AutoLedgerBlueprintSheet: View {
                                 blueprintNode("识别账单", tint: .ledgerGold)
                             }
 
-                            Text("最后一步搜索“本地记账”，添加系统已经暴露出来的“识别账单”动作。")
+                            Text("最后一步搜索“Monee”，添加系统已经暴露出来的“识别账单”动作。")
                                 .font(.system(size: 14, weight: .medium, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.74))
                         }
@@ -484,7 +484,7 @@ private struct AutoLedgerBlueprintSheet: View {
                             blueprintBullet("图片：接“从截图获取图像”的输出。")
                             blueprintBullet("内容：先留空即可。")
                             blueprintBullet("运行时显示：建议关闭。")
-                            blueprintBullet("整条捷径建议命名成“本地记账-自动记账”。")
+                            blueprintBullet("整条捷径建议命名成“Monee-自动记账”。")
                         }
                     }
 
