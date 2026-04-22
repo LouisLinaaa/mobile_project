@@ -1,7 +1,20 @@
 # ViewModels
 
-中文 / Chinese:
-放置中心化状态、持久化逻辑和页面背后的业务编排。当前以 `LedgerStore` 为核心，负责数据读写、预算计算、备份和页面共享状态。
+State and orchestration layer for `Monee`.
 
-English:
-Contains centralized state, persistence logic, and feature orchestration. `LedgerStore` is the current core, handling data flow, budget calculations, backup, and shared UI state.
+## Main Files
+
+- [LedgerStore.swift](LedgerStore.swift): central app state, persistence, CSV import/export, backup, restore, widget snapshot publishing
+- [AutoLedgerFlow.swift](AutoLedgerFlow.swift): Auto Ledger pipeline, OCR/LLM parsing orchestration, review flow, shortcut handoff
+- [AutoLedgerLLM.swift](AutoLedgerLLM.swift): OpenAI request configuration and prompt rendering
+
+## Scope
+
+This layer should absorb:
+
+- state mutation
+- persistence and restore
+- cross-screen coordination
+- external integration boundaries
+
+It should avoid burying heavy view layout decisions.
