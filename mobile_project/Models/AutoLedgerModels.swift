@@ -163,17 +163,22 @@ struct AutoLedgerParseEnvelope: Codable {
 
 struct AutoLedgerReviewDraft: Identifiable {
     let id = UUID()
+    var bookID: UUID?
     var amountText: String
     var kind: LedgerKind
     var categoryID: String
+    var accountID: UUID?
     var paymentMethod: String
     var occurredAt: Date
     var merchant: String
+    var tags: [String]
     var note: String
     var rawText: String
     var confidence: Double
     var reason: String
     var recognizedEntryCount: Int
+    var isExcludedFromStatistics: Bool
+    var isExcludedFromBudget: Bool
 
     var parsedAmount: Double? {
         var cleaned = amountText

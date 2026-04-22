@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 struct HomeView: View {
@@ -7,10 +8,12 @@ struct HomeView: View {
     }
 
     @EnvironmentObject private var store: LedgerStore
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var isDrawerPresented = false
     @State private var activeHomeTab: HomePrimaryTab = .ledger
     @State private var activeScreen: ManagementScreen?
+    @State private var selectedEntry: LedgerEntry?
     @State private var highlightedFeature: String?
     @State private var pendingInteractionTask: Task<Void, Never>?
 
@@ -67,6 +70,9 @@ struct HomeView: View {
             ManagementSheetView(screen: screen)
                 .environmentObject(store)
         }
+        .sheet(item: $selectedEntry) { entry in
+            LedgerEntryDetailSheet(store: store, entry: entry)
+        }
         .alert("功能预留", isPresented: featureAlertBinding) {
             Button("知道了", role: .cancel) {}
         } message: {
@@ -74,8 +80,20 @@ struct HomeView: View {
         }
         .onOpenURL(perform: handleWidgetDeepLink(_:))
         .onAppear(perform: openPendingAutoLedgerIfNeeded)
+        .onAppear {
+            handleEntryNavigation(store.entryNavigationRequest)
+        }
         .onChange(of: store.autoLedgerPendingLaunch) { _, _ in
             openPendingAutoLedgerIfNeeded()
+        }
+        .onChange(of: store.entryNavigationRequest) { _, request in
+            handleEntryNavigation(request)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            store.refreshAutoLedgerShortcutState()
+            openPendingAutoLedgerIfNeeded()
+            handleEntryNavigation(store.entryNavigationRequest)
         }
     }
 
@@ -476,6 +494,16 @@ struct HomeView: View {
                 Spacer()
 
                 if !store.todayEntries.isEmpty {
+                    Button {
+                        store.clearHistoryPresentation()
+                        openScreen(.history)
+                    } label: {
+                        Text("全部记录")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.ledgerAccent)
+                    }
+                    .buttonStyle(LedgerResponsiveButtonStyle())
+
                     Text("\(store.todayEntries.count) 笔")
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.ledgerMuted)
@@ -499,7 +527,12 @@ struct HomeView: View {
             } else {
                 VStack(spacing: 12) {
                     ForEach(store.todayEntries) { entry in
-                        TransactionRow(entry: entry, isSensitiveVisible: isSensitiveInfoVisible)
+                        Button {
+                            selectedEntry = entry
+                        } label: {
+                            TransactionRow(entry: entry, isSensitiveVisible: isSensitiveInfoVisible)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -595,7 +628,7 @@ struct HomeView: View {
             return "去敏展示已开启，预算金额默认隐藏。"
         }
 
-        let remaining = max(0, budgetLimit - store.currentMonthExpense)
+        let remaining = max(0, budgetLimit - store.currentMonthBudgetExpense)
         return "本统计周期预算 \(LedgerFormatters.currency(budgetLimit))，剩余 \(LedgerFormatters.currency(remaining))。"
     }
 
@@ -691,6 +724,39 @@ struct HomeView: View {
     private func openPendingAutoLedgerIfNeeded() {
         guard store.hasPendingAutoLedgerLaunch else { return }
         openScreen(.autoLedgerCenter)
+    }
+
+    private func handleEntryNavigation(_ request: LedgerNavigationRequest?) {
+        guard let request else { return }
+
+        runAfterInteractiveTransition {
+            activeHomeTab = .ledger
+
+            switch request.destination {
+            case .detail(let entryID):
+                activeScreen = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                    selectedEntry = store.entry(withID: entryID)
+                    store.clearEntryNavigationRequest()
+                }
+
+            case .history:
+                selectedEntry = nil
+
+                if activeScreen == nil {
+                    activeScreen = .history
+                } else {
+                    activeScreen = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                        activeScreen = .history
+                        store.clearEntryNavigationRequest()
+                    }
+                    return
+                }
+
+                store.clearEntryNavigationRequest()
+            }
+        }
     }
 }
 
@@ -826,7 +892,7 @@ private struct BudgetProgressBar: View {
     }
 }
 
-private struct TransactionRow: View {
+struct TransactionRow: View {
     let entry: LedgerEntry
     let isSensitiveVisible: Bool
 
@@ -868,5 +934,861 @@ private struct TransactionRow: View {
         .padding(14)
         .background(Color.ledgerAccentMuted.opacity(0.62))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
+struct LedgerEntryDetailSheet: View {
+    @ObservedObject var store: LedgerStore
+    let entry: LedgerEntry
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var activeEditor: LedgerEntryDetailEditor?
+    @State private var isDeleteConfirmationPresented = false
+    @State private var selectedPhotoItem: PhotosPickerItem?
+
+    private var latestEntry: LedgerEntry {
+        store.entry(withID: entry.id) ?? entry
+    }
+
+    private var latestBook: LedgerBook? {
+        store.book(withID: latestEntry.bookID)
+    }
+
+    private var latestAccountName: String {
+        store.resolvedPaymentAccountName(for: latestEntry)
+    }
+
+    private var screenshotImage: UIImage? {
+        guard let imageData = latestEntry.screenshotData else { return nil }
+        return UIImage(data: imageData)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    amountHero
+                    primaryInfoCard
+                    accountAndRulesCard
+                    contentCard
+                    screenshotCard
+                }
+                .padding(20)
+                .padding(.bottom, 120)
+            }
+            .background(Color.ledgerCanvas)
+            .navigationTitle("记录详情")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("返回") {
+                        dismiss()
+                    }
+                    .foregroundStyle(Color.ledgerMuted)
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                deleteBar
+            }
+        }
+        .sheet(item: $activeEditor) { editor in
+            editorSheet(editor)
+        }
+        .confirmationDialog("删除这条记录？", isPresented: $isDeleteConfirmationPresented, titleVisibility: .visible) {
+            Button("删除", role: .destructive) {
+                store.deleteEntry(id: latestEntry.id)
+                dismiss()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("删除后不会进入回收站，这条记录会从首页、历史列表、预算和统计里一起移除。")
+        }
+        .onChange(of: selectedPhotoItem) { _, item in
+            guard let item else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self) {
+                    await MainActor.run {
+                        store.updateEntryScreenshot(latestEntry.id, data: data)
+                    }
+                }
+            }
+        }
+        .onChange(of: store.entries.map(\.id)) { _, ids in
+            guard ids.contains(entry.id) else {
+                dismiss()
+                return
+            }
+        }
+    }
+
+    private var amountHero: some View {
+        Button {
+            activeEditor = .amount
+        } label: {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("实付金额")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.ledgerMuted)
+
+                    Text(latestEntry
+                        .kind == .expense ? "-\(LedgerFormatters.currency(latestEntry.amount))" : LedgerFormatters
+                        .currency(latestEntry.amount))
+                        .font(.system(size: 34, weight: .black, design: .rounded))
+                        .foregroundStyle(latestEntry.kind == .expense ? Color.ledgerExpense : Color.ledgerIncome)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.ledgerMuted)
+                    .padding(.top, 6)
+            }
+            .padding(22)
+            .background(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.white, Color.ledgerCard],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing)))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var primaryInfoCard: some View {
+        VStack(spacing: 0) {
+            detailRow(label: "账单日期", value: LedgerFormatters.shortTimestamp(latestEntry.date)) {
+                activeEditor = .date
+            }
+
+            Divider().padding(.leading, 54)
+
+            detailRow(label: "所属账本", value: latestBook?.name ?? "当前账本") {
+                activeEditor = .book
+            }
+
+            Divider().padding(.leading, 54)
+
+            detailRow(label: "类型", value: latestEntry.kind.rawValue) {
+                activeEditor = .kind
+            }
+
+            Divider().padding(.leading, 54)
+
+            detailRow(label: "分类", value: latestEntry.category.name, valueColor: latestEntry.category.tint) {
+                activeEditor = .category
+            }
+        }
+        .padding(.vertical, 6)
+        .ledgerCard()
+    }
+
+    private var accountAndRulesCard: some View {
+        VStack(spacing: 0) {
+            detailRow(label: "付款账户", value: latestAccountName) {
+                activeEditor = .account
+            }
+
+            Divider().padding(.leading, 54)
+
+            toggleRow(
+                label: "不计收支",
+                isOn: Binding(
+                    get: { latestEntry.isExcludedFromStatistics },
+                    set: { newValue in
+                        store.updateEntry(latestEntry.id) { entry in
+                            entry.isExcludedFromStatistics = newValue
+                            if newValue {
+                                entry.isExcludedFromBudget = true
+                            }
+                        }
+                    }))
+
+            Divider().padding(.leading, 54)
+
+            toggleRow(
+                label: "不计预算",
+                isOn: Binding(
+                    get: { latestEntry.isExcludedFromBudget },
+                    set: { newValue in
+                        store.updateEntry(latestEntry.id) { entry in
+                            entry.isExcludedFromBudget = entry.isExcludedFromStatistics ? true : newValue
+                        }
+                    }),
+                disabled: latestEntry.isExcludedFromStatistics)
+        }
+        .padding(.vertical, 6)
+        .ledgerCard()
+    }
+
+    private var contentCard: some View {
+        VStack(spacing: 0) {
+            detailRow(label: "交易方", value: latestEntry.title) {
+                activeEditor = .title
+            }
+
+            Divider().padding(.leading, 54)
+
+            detailRow(
+                label: "标签",
+                value: latestEntry.tags.isEmpty ? "添加" : latestEntry.tags.joined(separator: " · "),
+                valueColor: latestEntry.tags.isEmpty ? Color.ledgerMuted : Color.ledgerText) {
+                    activeEditor = .tags
+                }
+
+            Divider().padding(.leading, 54)
+
+            detailRow(
+                label: "备注",
+                value: latestEntry.note.isEmpty ? "添加" : latestEntry.note,
+                valueColor: latestEntry.note.isEmpty ? Color.ledgerMuted : Color.ledgerText) {
+                    activeEditor = .note
+                }
+        }
+        .padding(.vertical, 6)
+        .ledgerCard()
+    }
+
+    private var screenshotCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("截图附件", systemImage: "photo.on.rectangle")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.ledgerText)
+
+                Spacer()
+
+                PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                    Text(screenshotImage == nil ? "添加" : "替换")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.ledgerAccent)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if let screenshotImage {
+                Image(uiImage: screenshotImage)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+
+                Button("删除截图", role: .destructive) {
+                    store.updateEntryScreenshot(latestEntry.id, data: nil)
+                }
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+            } else {
+                Text(store.appSettings.showRecordImages
+                    ? "这条记录还没有截图。你可以在这里手动补图，自动入账也会按设置决定是否保存截图。"
+                    : "自动入账当前不保留截图，但你仍然可以在详情页手动补一张。")
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.ledgerMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.ledgerAccentMuted.opacity(0.55))
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            }
+        }
+        .padding(20)
+        .ledgerCard()
+    }
+
+    private var deleteBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+
+            Button {
+                isDeleteConfirmationPresented = true
+            } label: {
+                Text("删除")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.red)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 18)
+                    .background(Color.white)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func detailRow(
+        label: String,
+        value: String,
+        valueColor: Color = Color.ledgerText,
+        action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Text(label)
+                    .font(.system(size: 16, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.ledgerMuted)
+                    .frame(width: 84, alignment: .leading)
+
+                Spacer(minLength: 8)
+
+                Text(value)
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .foregroundStyle(valueColor)
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.ledgerMuted.opacity(0.8))
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func toggleRow(label: String, isOn: Binding<Bool>, disabled: Bool = false) -> some View {
+        HStack(spacing: 12) {
+            Text(label)
+                .font(.system(size: 16, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.ledgerMuted)
+                .frame(width: 84, alignment: .leading)
+
+            Spacer()
+
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .tint(Color.ledgerAccent)
+                .disabled(disabled)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .opacity(disabled ? 0.55 : 1)
+    }
+
+    @ViewBuilder
+    private func editorSheet(_ editor: LedgerEntryDetailEditor) -> some View {
+        switch editor {
+        case .amount:
+            LedgerAmountEditorSheet(initialAmount: latestEntry.amount) { amount in
+                store.updateEntry(latestEntry.id) { entry in
+                    entry.amount = amount
+                }
+            }
+        case .date:
+            LedgerDateEditorSheet(initialDate: latestEntry.date) { date in
+                store.updateEntry(latestEntry.id) { entry in
+                    entry.date = date
+                }
+            }
+        case .book:
+            LedgerBookPickerSheet(store: store, selectedBookID: latestEntry.bookID) { bookID in
+                store.updateEntry(latestEntry.id) { entry in
+                    entry.bookID = bookID
+                }
+            }
+        case .account:
+            LedgerAccountPickerSheet(
+                store: store,
+                selectedAccountID: latestEntry.accountID,
+                fallbackPaymentMethod: latestEntry.paymentMethod) { accountID, paymentMethod in
+                    store.updateEntry(latestEntry.id) { entry in
+                        entry.accountID = accountID
+                        entry.paymentMethod = paymentMethod
+                    }
+                }
+        case .kind:
+            LedgerKindPickerSheet(initialKind: latestEntry.kind) { kind in
+                store.updateEntry(latestEntry.id) { entry in
+                    entry.kind = kind
+                    if entry.category.kind != kind {
+                        entry.category = store.categories(for: kind).first ?? LedgerCategory.defaultCategory(for: kind)
+                    }
+                }
+            }
+        case .category:
+            LedgerCategoryPickerSheet(
+                categories: store.categories(for: latestEntry.kind),
+                selectedCategoryID: latestEntry.category.id) { category in
+                    store.updateEntry(latestEntry.id) { entry in
+                        entry.category = category
+                    }
+                }
+        case .title:
+            LedgerTextEditorSheet(
+                title: "交易方",
+                placeholder: "例如 KFC Hong Kong",
+                initialText: latestEntry.title,
+                axis: .vertical) { text in
+                    store.updateEntry(latestEntry.id) { entry in
+                        entry.title = text
+                    }
+                }
+        case .tags:
+            LedgerTagsEditorSheet(
+                initialTags: latestEntry.tags,
+                suggestions: store.recentTags) { tags in
+                    store.updateEntry(latestEntry.id) { entry in
+                        entry.tags = tags
+                    }
+                }
+        case .note:
+            LedgerTextEditorSheet(
+                title: "备注",
+                placeholder: "补充说明、汇率、订单信息等",
+                initialText: latestEntry.note,
+                axis: .vertical) { text in
+                    store.updateEntry(latestEntry.id) { entry in
+                        entry.note = text
+                    }
+                }
+        }
+    }
+}
+
+private enum LedgerEntryDetailEditor: String, Identifiable {
+    case amount
+    case date
+    case book
+    case account
+    case kind
+    case category
+    case title
+    case tags
+    case note
+
+    var id: String { rawValue }
+}
+
+private struct LedgerAmountEditorSheet: View {
+    let initialAmount: Double
+    let onSave: (Double) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var amountText: String
+
+    init(initialAmount: Double, onSave: @escaping (Double) -> Void) {
+        self.initialAmount = initialAmount
+        self.onSave = onSave
+        _amountText = State(initialValue: String(format: "%.2f", initialAmount))
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("0.00", text: $amountText)
+                    .keyboardType(.decimalPad)
+            }
+            .navigationTitle("实付金额")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("保存") {
+                        let normalized = amountText.replacingOccurrences(of: ",", with: "")
+                        if let amount = Double(normalized), amount > 0 {
+                            onSave(amount)
+                            dismiss()
+                        }
+                    }
+                    .fontWeight(.bold)
+                }
+            }
+        }
+    }
+}
+
+private struct LedgerDateEditorSheet: View {
+    let initialDate: Date
+    let onSave: (Date) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var date: Date
+
+    init(initialDate: Date, onSave: @escaping (Date) -> Void) {
+        self.initialDate = initialDate
+        self.onSave = onSave
+        _date = State(initialValue: initialDate)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                DatePicker("账单日期", selection: $date, displayedComponents: [.date, .hourAndMinute])
+            }
+            .navigationTitle("账单日期")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("保存") {
+                        onSave(date)
+                        dismiss()
+                    }
+                    .fontWeight(.bold)
+                }
+            }
+        }
+    }
+}
+
+private struct LedgerBookPickerSheet: View {
+    @ObservedObject var store: LedgerStore
+    let selectedBookID: UUID
+    let onSave: (UUID) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var draftBookID: UUID
+
+    init(store: LedgerStore, selectedBookID: UUID, onSave: @escaping (UUID) -> Void) {
+        self.store = store
+        self.selectedBookID = selectedBookID
+        self.onSave = onSave
+        _draftBookID = State(initialValue: selectedBookID)
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(store.books) { book in
+                    Button {
+                        draftBookID = book.id
+                    } label: {
+                        HStack {
+                            Text(book.name)
+                            Spacer()
+                            if draftBookID == book.id {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 14, weight: .bold))
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .navigationTitle("所属账本")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("保存") {
+                        onSave(draftBookID)
+                        dismiss()
+                    }
+                    .fontWeight(.bold)
+                }
+            }
+        }
+    }
+}
+
+private struct LedgerAccountPickerSheet: View {
+    @ObservedObject var store: LedgerStore
+    let selectedAccountID: UUID?
+    let fallbackPaymentMethod: String
+    let onSave: (UUID?, String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var draftAccountID: UUID?
+    @State private var paymentMethodText: String
+
+    init(
+        store: LedgerStore,
+        selectedAccountID: UUID?,
+        fallbackPaymentMethod: String,
+        onSave: @escaping (UUID?, String) -> Void) {
+        self.store = store
+        self.selectedAccountID = selectedAccountID
+        self.fallbackPaymentMethod = fallbackPaymentMethod
+        self.onSave = onSave
+        _draftAccountID = State(initialValue: selectedAccountID)
+        _paymentMethodText = State(initialValue: fallbackPaymentMethod)
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("账户列表") {
+                    Button {
+                        draftAccountID = nil
+                    } label: {
+                        HStack {
+                            Text("仅保留文本")
+                            Spacer()
+                            if draftAccountID == nil {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+
+                    ForEach(store.paymentAccounts) { account in
+                        Button {
+                            draftAccountID = account.id
+                            paymentMethodText = account.name
+                        } label: {
+                            HStack {
+                                Text(account.name)
+                                Spacer()
+                                if draftAccountID == account.id {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                Section("显示文本") {
+                    TextField("例如：微信余额", text: $paymentMethodText)
+                }
+            }
+            .navigationTitle("付款账户")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("保存") {
+                        let finalText = paymentMethodText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        onSave(draftAccountID, finalText.isEmpty ? "待确认" : finalText)
+                        dismiss()
+                    }
+                    .fontWeight(.bold)
+                }
+            }
+        }
+    }
+}
+
+private struct LedgerKindPickerSheet: View {
+    let initialKind: LedgerKind
+    let onSave: (LedgerKind) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var kind: LedgerKind
+
+    init(initialKind: LedgerKind, onSave: @escaping (LedgerKind) -> Void) {
+        self.initialKind = initialKind
+        self.onSave = onSave
+        _kind = State(initialValue: initialKind)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Picker("类型", selection: $kind) {
+                    ForEach(LedgerKind.allCases) { item in
+                        Text(item.rawValue).tag(item)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+            .navigationTitle("类型")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("保存") {
+                        onSave(kind)
+                        dismiss()
+                    }
+                    .fontWeight(.bold)
+                }
+            }
+        }
+    }
+}
+
+private struct LedgerCategoryPickerSheet: View {
+    let categories: [LedgerCategory]
+    let selectedCategoryID: String
+    let onSave: (LedgerCategory) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var draftCategoryID: String
+
+    init(categories: [LedgerCategory], selectedCategoryID: String, onSave: @escaping (LedgerCategory) -> Void) {
+        self.categories = categories
+        self.selectedCategoryID = selectedCategoryID
+        self.onSave = onSave
+        _draftCategoryID = State(initialValue: selectedCategoryID)
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(categories) { category in
+                    Button {
+                        draftCategoryID = category.id
+                    } label: {
+                        HStack {
+                            Label(category.name, systemImage: category.icon)
+                                .foregroundStyle(category.tint, Color.ledgerText)
+                            Spacer()
+                            if draftCategoryID == category.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .navigationTitle("分类")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("保存") {
+                        let selected = categories.first(where: { $0.id == draftCategoryID }) ?? categories
+                            .first ?? LedgerCategory.defaultCategory(for: .expense)
+                        onSave(selected)
+                        dismiss()
+                    }
+                    .fontWeight(.bold)
+                }
+            }
+        }
+    }
+}
+
+private struct LedgerTextEditorSheet: View {
+    let title: String
+    let placeholder: String
+    let initialText: String
+    let axis: Axis
+    let onSave: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var text: String
+
+    init(
+        title: String,
+        placeholder: String,
+        initialText: String,
+        axis: Axis,
+        onSave: @escaping (String) -> Void) {
+        self.title = title
+        self.placeholder = placeholder
+        self.initialText = initialText
+        self.axis = axis
+        self.onSave = onSave
+        _text = State(initialValue: initialText)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField(placeholder, text: $text, axis: axis)
+                    .lineLimit(axis == .vertical ? 4...8 : 1...1)
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("保存") {
+                        onSave(text.trimmingCharacters(in: .whitespacesAndNewlines))
+                        dismiss()
+                    }
+                    .fontWeight(.bold)
+                }
+            }
+        }
+    }
+}
+
+private struct LedgerTagsEditorSheet: View {
+    let initialTags: [String]
+    let suggestions: [String]
+    let onSave: ([String]) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var input: String
+
+    init(initialTags: [String], suggestions: [String], onSave: @escaping ([String]) -> Void) {
+        self.initialTags = initialTags
+        self.suggestions = suggestions
+        self.onSave = onSave
+        _input = State(initialValue: initialTags.joined(separator: ", "))
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    TextField("例如：出差, 港币, 便利店", text: $input, axis: .vertical)
+                        .lineLimit(3...6)
+                        .padding(16)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+                    if !suggestions.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("最近标签")
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color.ledgerMuted)
+
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 8)], spacing: 8) {
+                                ForEach(suggestions.prefix(12), id: \.self) { tag in
+                                    Button(tag) {
+                                        let existing = parsedTags
+                                        if !existing.contains(tag) {
+                                            let updated = existing + [tag]
+                                            input = updated.joined(separator: ", ")
+                                        }
+                                    }
+                                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                                    .foregroundStyle(Color.ledgerAccent)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .frame(maxWidth: .infinity)
+                                    .background(Color.ledgerAccentSoft.opacity(0.6))
+                                    .clipShape(Capsule())
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(20)
+            }
+            .background(Color.ledgerCanvas)
+            .navigationTitle("标签")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("保存") {
+                        onSave(parsedTags)
+                        dismiss()
+                    }
+                    .fontWeight(.bold)
+                }
+            }
+        }
+    }
+
+    private var parsedTags: [String] {
+        var seen = Set<String>()
+        return input
+            .components(separatedBy: CharacterSet(charactersIn: ",，|、"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .filter { seen.insert($0).inserted }
     }
 }

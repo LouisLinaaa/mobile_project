@@ -28,7 +28,7 @@ struct BudgetManagementView: View {
 
     private var calendarDays: [BudgetCalendarDay] {
         let dates = monthDates
-        let totalsByDay = Dictionary(grouping: store.currentBookEntries.filter {
+        let totalsByDay = Dictionary(grouping: store.currentBookBudgetEntries.filter {
             $0.kind == .expense && store.currentStatisticsMonthInterval.contains($0.date)
         }, by: {
             calendar.startOfDay(for: $0.date)
@@ -254,7 +254,7 @@ struct BudgetManagementView: View {
             HStack {
                 summaryMetric(
                     title: "已用",
-                    value: displayAmount(store.currentMonthExpense, fallback: "¥--"))
+                    value: displayAmount(store.currentMonthBudgetExpense, fallback: "¥--"))
 
                 Spacer()
 

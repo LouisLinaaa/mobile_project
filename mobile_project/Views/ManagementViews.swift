@@ -3,6 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 enum ManagementScreen: String, Identifiable {
+    case history
     case statistics
     case budget
     case assets
@@ -40,6 +41,8 @@ struct ManagementSheetView: View {
     @ViewBuilder
     private var content: some View {
         switch screen {
+        case .history:
+            LedgerHistoryView()
         case .statistics:
             StatisticsView()
         case .budget:
@@ -95,7 +98,7 @@ struct StatisticsView: View {
     @State private var selectedKind: LedgerKind = .expense
 
     private var filteredEntries: [LedgerEntry] {
-        store.currentBookEntries.filter { entry in
+        store.currentBookStatisticEntries.filter { entry in
             switch range {
             case .week:
                 let start = Calendar.current.date(
@@ -2088,6 +2091,198 @@ private struct AboutAppView: View {
     }
 }
 
+private struct LedgerHistoryDaySection: Identifiable {
+    let date: Date
+    let entries: [LedgerEntry]
+
+    var id: Date { date }
+}
+
+struct LedgerHistoryView: View {
+    @EnvironmentObject private var store: LedgerStore
+
+    @State private var scope: LedgerHistoryScope = .currentBook
+    @State private var showsFocusedBatchOnly = false
+    @State private var selectedEntry: LedgerEntry?
+
+    private var isSensitiveVisible: Bool {
+        store.isBalanceVisible && !store.appSettings.hideSensitiveInfo
+    }
+
+    private var highlightedIDs: Set<UUID> {
+        Set(store.historyPresentation.highlightedEntryIDs)
+    }
+
+    private var visibleEntries: [LedgerEntry] {
+        let source = store.entries(scope: scope)
+        guard showsFocusedBatchOnly, !highlightedIDs.isEmpty else { return source }
+        return source.filter { highlightedIDs.contains($0.id) }
+    }
+
+    private var daySections: [LedgerHistoryDaySection] {
+        let grouped = Dictionary(grouping: visibleEntries) { entry in
+            Calendar.current.startOfDay(for: entry.date)
+        }
+
+        return grouped.keys
+            .sorted(by: >)
+            .map { day in
+                LedgerHistoryDaySection(
+                    date: day,
+                    entries: grouped[day]?.sorted(by: { $0.date > $1.date }) ?? [])
+            }
+    }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 18) {
+                historyHeader
+
+                if highlightedIDs.isEmpty == false {
+                    focusedBatchBanner
+                }
+
+                if daySections.isEmpty {
+                    EmptyFeatureState(
+                        icon: "tray",
+                        title: "还没有可显示的记录",
+                        detail: showsFocusedBatchOnly ? "这批记录已经被删除或当前过滤条件下为空。" : "先记一笔或导入一份 CSV，这里会按日期汇总。")
+                        .padding(.top, 24)
+                } else {
+                    VStack(spacing: 16) {
+                        ForEach(daySections) { section in
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text(sectionTitle(for: section.date))
+                                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                                    .foregroundStyle(Color.ledgerMuted)
+
+                                VStack(spacing: 12) {
+                                    ForEach(section.entries) { entry in
+                                        Button {
+                                            selectedEntry = entry
+                                        } label: {
+                                            TransactionRow(entry: entry, isSensitiveVisible: isSensitiveVisible)
+                                                .padding(4)
+                                                .background(
+                                                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                                        .fill(highlightedIDs.contains(entry.id) ? Color.ledgerAccentSoft
+                                                            .opacity(0.45) : Color.clear))
+                                        }
+                                        .buttonStyle(.plain)
+                                        .contextMenu {
+                                            Button("删除", role: .destructive) {
+                                                store.deleteEntry(id: entry.id)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(18)
+                            .ledgerCard()
+                        }
+                    }
+                }
+            }
+            .padding(20)
+            .padding(.bottom, 32)
+        }
+        .background(Color.ledgerCanvas.ignoresSafeArea())
+        .navigationTitle("全部记录")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $selectedEntry) { entry in
+            LedgerEntryDetailSheet(store: store, entry: entry)
+        }
+        .onAppear {
+            scope = store.historyPresentation.scope
+            showsFocusedBatchOnly = store.historyPresentation.prefersFocusedBatch && !highlightedIDs.isEmpty
+        }
+    }
+
+    private var historyHeader: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Picker("记录范围", selection: $scope) {
+                ForEach(LedgerHistoryScope.allCases) { item in
+                    Text(item.rawValue).tag(item)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            HStack(spacing: 12) {
+                historyMetric(value: "\(visibleEntries.count)", title: showsFocusedBatchOnly ? "本次记录" : "当前结果")
+                historyMetric(
+                    value: LedgerFormatters
+                        .currency(visibleEntries.filter { $0.kind == .expense }.reduce(0) { $0 + $1.amount }),
+                    title: "支出")
+                historyMetric(
+                    value: LedgerFormatters
+                        .currency(visibleEntries.filter { $0.kind == .income }.reduce(0) { $0 + $1.amount }),
+                    title: "收入")
+            }
+        }
+    }
+
+    private var focusedBatchBanner: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(store.historyPresentation.title ?? "本次新增记录")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.ledgerText)
+
+                Text(showsFocusedBatchOnly ? "当前只看本次批次，关闭后会回到完整历史列表。" : "已高亮本次新增记录。")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.ledgerMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+
+            Button(showsFocusedBatchOnly ? "查看全部" : "只看本次") {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    showsFocusedBatchOnly.toggle()
+                }
+            }
+            .font(.system(size: 13, weight: .bold, design: .rounded))
+            .foregroundStyle(Color.ledgerAccent)
+        }
+        .padding(16)
+        .background(Color.ledgerAccentSoft.opacity(0.58))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private func historyMetric(value: String, title: String) -> some View {
+        VStack(spacing: 6) {
+            Text(value)
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+
+            Text(title)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.ledgerMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private func sectionTitle(for date: Date) -> String {
+        if Calendar.current.isDateInToday(date) {
+            return "今天"
+        }
+
+        if Calendar.current.isDateInYesterday(date) {
+            return "昨天"
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hans_CN")
+        formatter.dateFormat = "M月d日 EEEE"
+        return formatter.string(from: date)
+    }
+}
+
 // MARK: - CSV Import / Export (embedded so no separate target membership needed)
 
 private enum CSVError: LocalizedError {
@@ -2110,66 +2305,336 @@ private struct CSVParseResult {
     let skipped: Int
 }
 
+@MainActor
 private enum CSVService {
-    static func exportCSV(entries: [LedgerEntry], book: LedgerBook) -> String {
-        var lines = ["日期,类型,金额,分类,支付方式,备注,账本"]
-        let fmt = ISO8601DateFormatter()
-        fmt.formatOptions = [.withFullDate]
-        for e in entries.sorted(by: { $0.date > $1.date }) {
-            lines.append("\(fmt.string(from: e.date)),\(e.kind == .expense ? "支出" : "收入"),\(String(format: "%.2f", e.amount)),\(esc(e.category.name)),\(esc(e.paymentMethod)),\(esc(e.note.isEmpty ? e.title : e.note)),\(esc(book.name))")
+    private enum Column: CaseIterable {
+        case date
+        case kind
+        case amount
+        case category
+        case paymentMethod
+        case title
+        case note
+        case book
+        case tags
+        case excludeStatistics
+        case excludeBudget
+    }
+
+    static func exportCSV(entries: [LedgerEntry], store: LedgerStore) -> String {
+        var lines = ["日期,类型,金额,分类,付款账户,交易方,备注,账本,标签,不计收支,不计预算"]
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hans_CN")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+
+        for entry in entries.sorted(by: { $0.date > $1.date }) {
+            let bookName = store.book(withID: entry.bookID)?.name ?? store.currentBook.name
+            let paymentAccount = store.resolvedPaymentAccountName(for: entry)
+            let tags = entry.tags.joined(separator: "|")
+            let row = [
+                formatter.string(from: entry.date),
+                entry.kind == .expense ? "支出" : "收入",
+                String(format: "%.2f", entry.amount),
+                esc(entry.category.name),
+                esc(paymentAccount),
+                esc(entry.title),
+                esc(entry.note),
+                esc(bookName),
+                esc(tags),
+                entry.isExcludedFromStatistics ? "是" : "否",
+                entry.isExcludedFromBudget ? "是" : "否"
+            ].joined(separator: ",")
+            lines.append(row)
         }
+
         return "\u{FEFF}" + lines.joined(separator: "\n")
     }
 
-    static func parseCSV(_ csv: String, bookID: UUID, scheme: LedgerCategoryScheme) -> CSVParseResult {
-        var content = csv.hasPrefix("\u{FEFF}") ? String(csv.dropFirst()) : csv
-        let rows = content.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        guard rows.count > 1 else { return CSVParseResult(succeeded: [], failed: [(1, "文件为空")], skipped: 0) }
-        let allCats = scheme.expenseCategories + scheme.incomeCategories
-        let fmt = ISO8601DateFormatter(); fmt.formatOptions = [.withFullDate]
-        var ok: [LedgerEntry] = []; var bad: [(Int, String)] = []
-        for (i, line) in rows.dropFirst().enumerated() {
-            let row = i + 2; let cols = parseLine(line)
-            guard cols.count >= 5 else { bad.append((row, "列数不足")); continue }
-            guard let date = fmt.date(from: cols[0]) else { bad.append((row, "日期无效：\(cols[0])")); continue }
-            let kind: LedgerKind
-            if cols[1] == "支出" || cols[1].lowercased() == "expense" { kind = .expense }
-            else if cols[1] == "收入" || cols[1].lowercased() == "income" { kind = .income }
-            else { bad.append((row, "类型无效：\(cols[1])")); continue }
-            let amtStr = cols[2].replacingOccurrences(of: "¥", with: "").replacingOccurrences(of: ",", with: "")
-            guard let amt = Double(amtStr), amt > 0 else { bad.append((row, "金额无效：\(cols[2])")); continue }
-            let cat = allCats.first { $0.kind == kind && $0.name == cols[3] } ?? LedgerCategory.defaultCategory(for: kind)
-            let pay = cols.count > 4 ? cols[4] : "其他"
-            let note = cols.count > 5 ? cols[5] : ""
-            ok.append(LedgerEntry(bookID: bookID, title: note.isEmpty ? cols[3] : note, amount: amt, kind: kind, category: cat, paymentMethod: pay.isEmpty ? "其他" : pay, note: note, date: date))
+    static func parseCSV(_ csv: String, defaultBookID: UUID, store: LedgerStore) -> CSVParseResult {
+        let content = csv.hasPrefix("\u{FEFF}") ? String(csv.dropFirst()) : csv
+        let rows = content
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard !rows.isEmpty else {
+            return CSVParseResult(succeeded: [], failed: [(1, "文件为空")], skipped: 0)
         }
-        return CSVParseResult(succeeded: ok, failed: bad, skipped: 0)
+
+        let firstColumns = parseLine(rows[0])
+        let headerMap = headerMapping(from: firstColumns)
+        let dataRows: ArraySlice<String>
+        let rowOffset: Int
+
+        if headerMap.isEmpty {
+            dataRows = rows[...]
+            rowOffset = 1
+        } else {
+            dataRows = rows.dropFirst()
+            rowOffset = 2
+        }
+
+        let allCategories = store.allCategories(for: .expense) + store.allCategories(for: .income)
+        var succeeded: [LedgerEntry] = []
+        var failed: [(row: Int, reason: String)] = []
+
+        for (index, line) in dataRows.enumerated() {
+            let rowNumber = index + rowOffset
+            let columns = parseLine(line)
+
+            guard let rawDate = value(for: .date, columns: columns, headerMap: headerMap),
+                  let date = parseDate(rawDate) else {
+                failed.append((rowNumber, "日期无效"))
+                continue
+            }
+
+            guard let rawKind = value(for: .kind, columns: columns, headerMap: headerMap),
+                  let kind = parseKind(rawKind) else {
+                failed.append((rowNumber, "类型无效"))
+                continue
+            }
+
+            guard let rawAmount = value(for: .amount, columns: columns, headerMap: headerMap),
+                  let amount = parseAmount(rawAmount),
+                  amount > 0 else {
+                failed.append((rowNumber, "金额无效"))
+                continue
+            }
+
+            let category = resolveCategory(
+                value(for: .category, columns: columns, headerMap: headerMap),
+                kind: kind,
+                allCategories: allCategories)
+
+            let paymentMethod = value(for: .paymentMethod, columns: columns, headerMap: headerMap)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let note = value(for: .note, columns: columns, headerMap: headerMap)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let titleValue = value(for: .title, columns: columns, headerMap: headerMap)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let title = titleValue.isEmpty ? (note.isEmpty ? category.name : note) : titleValue
+            let bookName = value(for: .book, columns: columns, headerMap: headerMap)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let matchedBookID = store.books.first(where: { $0.name == bookName })?.id ?? defaultBookID
+            let tags = parseTags(value(for: .tags, columns: columns, headerMap: headerMap))
+            let excludeStatistics = parseBoolean(value(for: .excludeStatistics, columns: columns, headerMap: headerMap))
+            let excludeBudget = excludeStatistics || parseBoolean(
+                value(for: .excludeBudget, columns: columns, headerMap: headerMap))
+
+            succeeded.append(
+                LedgerEntry(
+                    bookID: matchedBookID,
+                    title: title,
+                    amount: amount,
+                    kind: kind,
+                    category: category,
+                    paymentMethod: paymentMethod.isEmpty ? "待确认" : paymentMethod,
+                    accountID: store.matchingAccountID(for: paymentMethod),
+                    tags: tags,
+                    note: note,
+                    date: date,
+                    isExcludedFromStatistics: excludeStatistics,
+                    isExcludedFromBudget: excludeBudget))
+        }
+
+        return CSVParseResult(succeeded: succeeded, failed: failed, skipped: 0)
+    }
+
+    private static func headerMapping(from columns: [String]) -> [Column: Int] {
+        var mapping: [Column: Int] = [:]
+
+        for (index, rawValue) in columns.enumerated() {
+            switch normalizedHeader(rawValue) {
+            case "日期", "时间", "账单日期":
+                mapping[.date] = index
+            case "类型":
+                mapping[.kind] = index
+            case "金额", "实付金额":
+                mapping[.amount] = index
+            case "分类":
+                mapping[.category] = index
+            case "付款账户", "支付方式", "支付账户":
+                mapping[.paymentMethod] = index
+            case "交易方", "标题", "商户":
+                mapping[.title] = index
+            case "备注":
+                mapping[.note] = index
+            case "账本":
+                mapping[.book] = index
+            case "标签":
+                mapping[.tags] = index
+            case "不计收支":
+                mapping[.excludeStatistics] = index
+            case "不计预算":
+                mapping[.excludeBudget] = index
+            default:
+                break
+            }
+        }
+
+        guard mapping[.date] != nil, mapping[.kind] != nil, mapping[.amount] != nil else {
+            return [:]
+        }
+
+        return mapping
+    }
+
+    private static func normalizedHeader(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "_", with: "")
+    }
+
+    private static func value(for column: Column, columns: [String], headerMap: [Column: Int]) -> String? {
+        if let index = headerMap[column], columns.indices.contains(index) {
+            return columns[index]
+        }
+
+        if !headerMap.isEmpty {
+            return nil
+        }
+
+        let legacyIndex: Int? = switch column {
+        case .date: 0
+        case .kind: 1
+        case .amount: 2
+        case .category: 3
+        case .paymentMethod: 4
+        case .title: 5
+        case .note: 5
+        case .book: 6
+        case .tags, .excludeStatistics, .excludeBudget: nil
+        }
+
+        guard let legacyIndex, columns.indices.contains(legacyIndex) else { return nil }
+        return columns[legacyIndex]
+    }
+
+    private static func parseDate(_ rawValue: String) -> Date? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hans_CN")
+
+        for format in ["yyyy-MM-dd HH:mm", "yyyy/MM/dd HH:mm", "yyyy-MM-dd", "yyyy/MM/dd"] {
+            formatter.dateFormat = format
+            if let date = formatter.date(from: trimmed) {
+                return date
+            }
+        }
+
+        let isoFormatter = ISO8601DateFormatter()
+        if let date = isoFormatter.date(from: trimmed) {
+            return date
+        }
+
+        return nil
+    }
+
+    private static func parseKind(_ rawValue: String) -> LedgerKind? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch trimmed.lowercased() {
+        case "支出", "expense":
+            return .expense
+        case "收入", "income":
+            return .income
+        default:
+            return nil
+        }
+    }
+
+    private static func parseAmount(_ rawValue: String) -> Double? {
+        let normalized = rawValue
+            .replacingOccurrences(of: "¥", with: "")
+            .replacingOccurrences(of: "￥", with: "")
+            .replacingOccurrences(of: ",", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return Double(normalized)
+    }
+
+    private static func resolveCategory(
+        _ rawValue: String?,
+        kind: LedgerKind,
+        allCategories: [LedgerCategory]) -> LedgerCategory {
+        guard let rawValue else {
+            return LedgerCategory.defaultCategory(for: kind)
+        }
+
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return LedgerCategory.defaultCategory(for: kind)
+        }
+
+        let candidates = allCategories.filter { $0.kind == kind }
+        if let exact = candidates.first(where: { $0.name == trimmed || $0.id == trimmed }) {
+            return exact
+        }
+
+        let normalized = trimmed.lowercased().replacingOccurrences(of: " ", with: "")
+        if let fuzzy = candidates.first(where: {
+            let name = $0.name.lowercased().replacingOccurrences(of: " ", with: "")
+            return name.contains(normalized) || normalized.contains(name)
+        }) {
+            return fuzzy
+        }
+
+        return LedgerCategory.defaultCategory(for: kind)
+    }
+
+    private static func parseTags(_ rawValue: String?) -> [String] {
+        guard let rawValue else { return [] }
+
+        return rawValue
+            .components(separatedBy: CharacterSet(charactersIn: "|,，、"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private static func parseBoolean(_ rawValue: String?) -> Bool {
+        guard let rawValue else { return false }
+        switch rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "1", "true", "yes", "y", "是", "开", "开启":
+            return true
+        default:
+            return false
+        }
     }
 
     private static func esc(_ v: String) -> String {
-        (v.contains(",") || v.contains("\"") || v.contains("\n")) ? "\"\(v.replacingOccurrences(of: "\"", with: "\"\""))\"" : v
+        (v.contains(",") || v.contains("\"") || v.contains("\n")) ?
+            "\"\(v.replacingOccurrences(of: "\"", with: "\"\""))\"" : v
     }
 
     private static func parseLine(_ line: String) -> [String] {
-        var res: [String] = []; var cur = ""; var inQ = false; var i = line.startIndex
+        var res: [String] = []
+        var cur = ""
+        var inQ = false
+        var i = line.startIndex
         while i < line.endIndex {
             let ch = line[i]
             if ch == "\"" {
                 let next = line.index(after: i)
-                if inQ && next < line.endIndex && line[next] == "\"" { cur.append("\""); i = next }
+                if inQ && next < line.endIndex && line[next] == "\"" { cur.append("\"")
+                    i = next
+                }
                 else { inQ.toggle() }
-            } else if ch == "," && !inQ { res.append(cur); cur = "" }
+            } else if ch == "," && !inQ { res.append(cur)
+                cur = ""
+            }
             else { cur.append(ch) }
             i = line.index(after: i)
         }
-        res.append(cur); return res
+        res.append(cur)
+        return res
     }
 }
 
 private struct CSVFile: FileDocument {
     static var readableContentTypes: [UTType] { [.commaSeparatedText, .plainText] }
     var content: String
-    init(content: String) { self.content = content }
+    init(content: String) {
+        self.content = content
+    }
     init(configuration: ReadConfiguration) throws {
         guard let data = configuration.file.regularFileContents,
               let s = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1)
@@ -2198,9 +2663,17 @@ struct CSVImportExportView: View {
     @State private var importSuccess = false
     @State private var errorMessage: String?
 
-    private enum Tab: String, CaseIterable { case export = "导出"; case `import` = "导入" }
-    private enum Scope: String, CaseIterable { case currentBook = "当前账本"; case allBooks = "全部账本" }
-    private enum Range: String, CaseIterable { case thisMonth = "本月"; case last3Months = "近3个月"; case thisYear = "今年"; case allTime = "全部" }
+    private enum Tab: String, CaseIterable { case export = "导出"
+        case `import` = "导入"
+    }
+    private enum Scope: String, CaseIterable { case currentBook = "当前账本"
+        case allBooks = "全部账本"
+    }
+    private enum Range: String, CaseIterable { case thisMonth = "本月"
+        case last3Months = "近3个月"
+        case thisYear = "今年"
+        case allTime = "全部"
+    }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -2232,6 +2705,7 @@ struct CSVImportExportView: View {
     }
 
     // MARK: Tab bar
+
     private var tabBar: some View {
         HStack(spacing: 0) {
             ForEach(Tab.allCases, id: \.self) { t in
@@ -2240,7 +2714,10 @@ struct CSVImportExportView: View {
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .foregroundStyle(activeTab == t ? .white : Color.ledgerMuted)
                         .frame(maxWidth: .infinity).padding(.vertical, 10)
-                        .background(activeTab == t ? RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.ledgerAccent) : RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.clear))
+                        .background(activeTab == t ? RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color.ledgerAccent) : RoundedRectangle(
+                                cornerRadius: 14,
+                                style: .continuous).fill(Color.clear))
                 }.buttonStyle(.plain)
             }
         }
@@ -2249,6 +2726,7 @@ struct CSVImportExportView: View {
     }
 
     // MARK: Export tab
+
     private var exportTab: some View {
         let entries = filtered()
         return VStack(spacing: 16) {
@@ -2277,20 +2755,27 @@ struct CSVImportExportView: View {
             HStack(spacing: 0) {
                 statBlock("\(entries.count)", label: "记录数", color: .ledgerAccent)
                 Divider().frame(height: 40)
-                statBlock(LedgerFormatters.currency(entries.filter { $0.kind == .expense }.reduce(0) { $0 + $1.amount }), label: "总支出", color: .ledgerExpense)
+                statBlock(
+                    LedgerFormatters.currency(entries.filter { $0.kind == .expense }.reduce(0) { $0 + $1.amount }),
+                    label: "总支出",
+                    color: .ledgerExpense)
                 Divider().frame(height: 40)
-                statBlock(LedgerFormatters.currency(entries.filter { $0.kind == .income }.reduce(0) { $0 + $1.amount }), label: "总收入", color: .ledgerIncome)
+                statBlock(
+                    LedgerFormatters.currency(entries.filter { $0.kind == .income }.reduce(0) { $0 + $1.amount }),
+                    label: "总收入",
+                    color: .ledgerIncome)
             }.padding(.vertical, 16).ledgerCard()
 
             // Export button
             Button {
-                exportFile = CSVFile(content: CSVService.exportCSV(entries: entries, book: store.currentBook))
+                exportFile = CSVFile(content: CSVService.exportCSV(entries: entries, store: store))
                 showExportShare = true
             } label: {
                 Label("导出 CSV 文件", systemImage: "square.and.arrow.up")
                     .font(.system(size: 17, weight: .bold, design: .rounded))
                     .foregroundStyle(.white).frame(maxWidth: .infinity).padding(.vertical, 16)
-                    .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(entries.isEmpty ? Color.ledgerMuted : Color.ledgerAccent))
+                    .background(RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(entries.isEmpty ? Color.ledgerMuted : Color.ledgerAccent))
             }
             .buttonStyle(LedgerResponsiveButtonStyle())
             .disabled(entries.isEmpty)
@@ -2299,34 +2784,44 @@ struct CSVImportExportView: View {
                 Image(systemName: "lightbulb.fill").foregroundStyle(Color.ledgerGold).font(.system(size: 14))
                 Text("导出的 CSV 可直接用 Excel 或 Numbers 打开，也可以重新导入本应用。")
                     .font(.system(size: 13, weight: .medium, design: .rounded)).foregroundStyle(Color.ledgerMuted)
-            }.padding(14).background(Color.ledgerGold.opacity(0.08)).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }.padding(14).background(Color.ledgerGold.opacity(0.08)).clipShape(RoundedRectangle(
+                cornerRadius: 14,
+                style: .continuous))
         }
     }
 
     // MARK: Import tab
+
     private var importTab: some View {
         VStack(spacing: 16) {
             Button { isImporting = true } label: {
                 VStack(spacing: 14) {
                     ZStack {
                         Circle().fill(Color.ledgerAccentMuted).frame(width: 72, height: 72)
-                        Image(systemName: "doc.badge.plus").font(.system(size: 30, weight: .semibold)).foregroundStyle(Color.ledgerAccent)
+                        Image(systemName: "doc.badge.plus").font(.system(size: 30, weight: .semibold))
+                            .foregroundStyle(Color.ledgerAccent)
                     }
                     VStack(spacing: 4) {
-                        Text("选择 CSV 文件").font(.system(size: 18, weight: .bold, design: .rounded)).foregroundStyle(Color.ledgerText)
+                        Text("选择 CSV 文件").font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.ledgerText)
                         Text("支持从本地、iCloud Drive 或其他 App 导入")
-                            .font(.system(size: 13, weight: .medium, design: .rounded)).foregroundStyle(Color.ledgerMuted).multilineTextAlignment(.center)
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(Color.ledgerMuted).multilineTextAlignment(.center)
                     }
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 36)
                 .background(RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .strokeBorder(Color.ledgerAccent.opacity(0.35), style: StrokeStyle(lineWidth: 2, dash: [8, 5]))
-                    .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(Color.ledgerAccentMuted.opacity(0.4))))
+                    .background(RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(Color.ledgerAccentMuted.opacity(0.4))))
             }.buttonStyle(.plain)
 
             if isProcessing {
-                HStack(spacing: 12) { ProgressView(); Text("解析中…").font(.system(size: 15, weight: .medium, design: .rounded)).foregroundStyle(Color.ledgerMuted) }
-                    .frame(maxWidth: .infinity).padding(.vertical, 16).ledgerCard()
+                HStack(spacing: 12) { ProgressView()
+                    Text("解析中…").font(.system(size: 15, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.ledgerMuted)
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, 16).ledgerCard()
             }
 
             if importSuccess {
@@ -2334,15 +2829,33 @@ struct CSVImportExportView: View {
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.ledgerIncome)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(16)
-                    .background(Color.ledgerIncome.opacity(0.08)).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .background(Color.ledgerIncome.opacity(0.08)).clipShape(RoundedRectangle(
+                        cornerRadius: 16,
+                        style: .continuous))
             }
 
             VStack(alignment: .leading, spacing: 0) {
                 header("CSV 格式说明", icon: "info.circle.fill")
-                ForEach([("日期","YYYY-MM-DD，如 2024-03-15"),("类型","支出 或 收入"),("金额","正数，如 58.00"),("分类","与账本分类匹配"),("支付方式","如 支付宝、微信"),("备注","可选第6列")], id: \.0) { col, desc in
+                ForEach([
+                    ("日期", "支持 YYYY-MM-DD HH:mm，也兼容旧版纯日期"),
+                    ("类型", "支出 / 收入，兼容 expense / income"),
+                    ("金额", "正数，如 58.00"),
+                    ("分类", "按当前分类名称匹配，找不到会回退默认分类"),
+                    ("付款账户", "如 微信余额、支付宝、现金"),
+                    ("交易方", "商户或记录标题"),
+                    ("备注", "可留空"),
+                    ("账本", "可留空，默认导入到当前账本"),
+                    ("标签", "可用 | 、逗号分隔多个标签"),
+                    ("不计收支", "是 / 否"),
+                    ("不计预算", "是 / 否")
+                ], id: \.0) { col, desc in
                     HStack(alignment: .top, spacing: 8) {
-                        Text(col).font(.system(size: 13, weight: .bold, design: .rounded)).foregroundStyle(Color.ledgerAccent).frame(width: 60, alignment: .leading)
-                        Text(desc).font(.system(size: 13, weight: .medium, design: .rounded)).foregroundStyle(Color.ledgerMuted)
+                        Text(col).font(.system(size: 13, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.ledgerAccent).frame(
+                                width: 60,
+                                alignment: .leading)
+                        Text(desc).font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(Color.ledgerMuted)
                     }.padding(.horizontal, 16).padding(.vertical, 6)
                 }
                 Spacer().frame(height: 12)
@@ -2351,6 +2864,7 @@ struct CSVImportExportView: View {
     }
 
     // MARK: Helpers
+
     private func header(_ title: String, icon: String) -> some View {
         Label(title, systemImage: icon)
             .font(.system(size: 14, weight: .bold, design: .rounded)).foregroundStyle(Color.ledgerMuted)
@@ -2362,11 +2876,15 @@ struct CSVImportExportView: View {
             HStack(spacing: 12) {
                 ZStack {
                     Circle().fill(selected ? Color.ledgerAccent : Color.ledgerAccentMuted).frame(width: 22, height: 22)
-                    if selected { Image(systemName: "checkmark").font(.system(size: 10, weight: .black)).foregroundStyle(.white) }
+                    if selected {
+                        Image(systemName: "checkmark").font(.system(size: 10, weight: .black)).foregroundStyle(.white)
+                    }
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 16, weight: .semibold, design: .rounded)).foregroundStyle(Color.ledgerText)
-                    Text(subtitle).font(.system(size: 13, weight: .medium, design: .rounded)).foregroundStyle(Color.ledgerMuted)
+                    Text(title).font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.ledgerText)
+                    Text(subtitle).font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.ledgerMuted)
                 }
                 Spacer()
             }.padding(.horizontal, 16).padding(.vertical, 12).contentShape(Rectangle())
@@ -2375,26 +2893,36 @@ struct CSVImportExportView: View {
 
     private func statBlock(_ value: String, label: String, color: Color) -> some View {
         VStack(spacing: 4) {
-            Text(value).font(.system(size: 16, weight: .bold, design: .rounded)).foregroundStyle(color).lineLimit(1).minimumScaleFactor(0.7)
+            Text(value).font(.system(size: 16, weight: .bold, design: .rounded)).foregroundStyle(color).lineLimit(1)
+                .minimumScaleFactor(0.7)
             Text(label).font(.system(size: 12, weight: .medium, design: .rounded)).foregroundStyle(Color.ledgerMuted)
         }.frame(maxWidth: .infinity)
     }
 
     private func filtered(scope s: Scope? = nil, range r: Range? = nil) -> [LedgerEntry] {
-        let s = s ?? scope; let r = r ?? range
+        let s = s ?? scope
+        let r = r ?? range
         var all = s == .currentBook ? store.entries.filter { $0.bookID == store.currentBook.id } : store.entries
-        let cal = Calendar.current; let now = Date()
+        let cal = Calendar.current
+        let now = Date()
         switch r {
-        case .thisMonth: if let d = cal.date(from: cal.dateComponents([.year, .month], from: now)) { all = all.filter { $0.date >= d } }
-        case .last3Months: if let d = cal.date(byAdding: .month, value: -3, to: now) { all = all.filter { $0.date >= d } }
-        case .thisYear: if let d = cal.date(from: DateComponents(year: cal.component(.year, from: now), month: 1, day: 1)) { all = all.filter { $0.date >= d } }
+        case .thisMonth: if let d = cal
+            .date(from: cal.dateComponents([.year, .month], from: now)) { all = all.filter { $0.date >= d } }
+        case .last3Months: if let d = cal
+            .date(byAdding: .month, value: -3, to: now) { all = all.filter { $0.date >= d } }
+        case .thisYear: if let d = cal.date(from: DateComponents(
+                year: cal.component(.year, from: now),
+                month: 1,
+                day: 1)) { all = all.filter { $0.date >= d } }
         case .allTime: break
         }
         return all
     }
 
     private var exportName: String {
-        let f = DateFormatter(); f.dateFormat = "yyyyMMdd"; return "ledger_\(f.string(from: Date())).csv"
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd"
+        return "ledger_\(f.string(from: Date())).csv"
     }
 
     private var confirmTitle: String { importResult?.succeeded.isEmpty == true ? "无法导入" : "解析完成" }
@@ -2410,7 +2938,8 @@ struct CSVImportExportView: View {
             if case let .failure(e) = result { errorMessage = e.localizedDescription }
             return
         }
-        isProcessing = true; importSuccess = false
+        isProcessing = true
+        importSuccess = false
         Task {
             do {
                 let ok = url.startAccessingSecurityScopedResource()
@@ -2420,20 +2949,52 @@ struct CSVImportExportView: View {
                 guard !str.isEmpty else { throw CSVError.emptyFile }
                 await MainActor.run {
                     isProcessing = false
-                    importResult = CSVService.parseCSV(str, bookID: store.currentBook.id, scheme: store.currentCategoryScheme)
+                    importResult = CSVService.parseCSV(str, defaultBookID: store.currentBook.id, store: store)
                     showImportConfirm = true
                 }
             } catch {
-                await MainActor.run { isProcessing = false; errorMessage = error.localizedDescription }
+                await MainActor.run { isProcessing = false
+                    errorMessage = error.localizedDescription
+                }
             }
         }
     }
 
     private func commitImport(_ r: CSVParseResult) {
-        for e in r.succeeded {
-            store.addEntry(bookID: e.bookID, title: e.title, amount: e.amount, kind: e.kind,
-                           category: e.category, paymentMethod: e.paymentMethod, note: e.note, date: e.date)
+        let createdEntries = r.succeeded.map { entry in
+            store.addEntry(
+                bookID: entry.bookID,
+                title: entry.title,
+                amount: entry.amount,
+                kind: entry.kind,
+                category: entry.category,
+                accountID: entry.accountID,
+                paymentMethod: entry.paymentMethod,
+                tags: entry.tags,
+                note: entry.note,
+                date: entry.date,
+                isExcludedFromStatistics: entry.isExcludedFromStatistics,
+                isExcludedFromBudget: entry.isExcludedFromBudget)
         }
-        importResult = nil; importSuccess = true
+
+        importResult = nil
+        importSuccess = !createdEntries.isEmpty
+
+        if createdEntries.count == 1, let entry = createdEntries.first {
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                store.presentEntryDetail(id: entry.id)
+            }
+        } else if !createdEntries.isEmpty {
+            let scope: LedgerHistoryScope = Set(createdEntries.map(\.bookID)).count > 1 ? .allBooks : .currentBook
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                store.presentHistory(
+                    scope: scope,
+                    highlightedEntryIDs: createdEntries.map(\.id),
+                    prefersFocusedBatch: true,
+                    title: "本次导入")
+            }
+        }
     }
 }

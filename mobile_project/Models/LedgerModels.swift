@@ -232,15 +232,37 @@ struct LedgerCategoryScheme: Identifiable, Hashable, Codable {
 }
 
 struct LedgerEntry: Identifiable, Codable {
-    let id: UUID
-    let bookID: UUID
-    let title: String
-    let amount: Double
-    let kind: LedgerKind
-    let category: LedgerCategory
-    let paymentMethod: String
-    let note: String
-    let date: Date
+    var id: UUID
+    var bookID: UUID
+    var title: String
+    var amount: Double
+    var kind: LedgerKind
+    var category: LedgerCategory
+    var paymentMethod: String
+    var accountID: UUID?
+    var tags: [String]
+    var note: String
+    var date: Date
+    var isExcludedFromStatistics: Bool
+    var isExcludedFromBudget: Bool
+    var screenshotData: Data?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case bookID
+        case title
+        case amount
+        case kind
+        case category
+        case paymentMethod
+        case accountID
+        case tags
+        case note
+        case date
+        case isExcludedFromStatistics
+        case isExcludedFromBudget
+        case screenshotData
+    }
 
     init(
         id: UUID = UUID(),
@@ -250,8 +272,13 @@ struct LedgerEntry: Identifiable, Codable {
         kind: LedgerKind,
         category: LedgerCategory,
         paymentMethod: String,
+        accountID: UUID? = nil,
+        tags: [String] = [],
         note: String,
-        date: Date) {
+        date: Date,
+        isExcludedFromStatistics: Bool = false,
+        isExcludedFromBudget: Bool = false,
+        screenshotData: Data? = nil) {
         self.id = id
         self.bookID = bookID
         self.title = title
@@ -259,8 +286,33 @@ struct LedgerEntry: Identifiable, Codable {
         self.kind = kind
         self.category = category
         self.paymentMethod = paymentMethod
+        self.accountID = accountID
+        self.tags = tags
         self.note = note
         self.date = date
+        self.isExcludedFromStatistics = isExcludedFromStatistics
+        self.isExcludedFromBudget = isExcludedFromStatistics ? true : isExcludedFromBudget
+        self.screenshotData = screenshotData
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        bookID = try container.decode(UUID.self, forKey: .bookID)
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        amount = try container.decodeIfPresent(Double.self, forKey: .amount) ?? 0
+        kind = try container.decodeIfPresent(LedgerKind.self, forKey: .kind) ?? .expense
+        category = try container.decodeIfPresent(LedgerCategory.self, forKey: .category)
+            ?? LedgerCategory.defaultCategory(for: kind)
+        paymentMethod = try container.decodeIfPresent(String.self, forKey: .paymentMethod) ?? ""
+        accountID = try container.decodeIfPresent(UUID.self, forKey: .accountID)
+        tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        note = try container.decodeIfPresent(String.self, forKey: .note) ?? ""
+        date = try container.decodeIfPresent(Date.self, forKey: .date) ?? Date()
+        isExcludedFromStatistics = try container.decodeIfPresent(Bool.self, forKey: .isExcludedFromStatistics) ?? false
+        let decodedBudgetExclusion = try container.decodeIfPresent(Bool.self, forKey: .isExcludedFromBudget) ?? false
+        isExcludedFromBudget = isExcludedFromStatistics ? true : decodedBudgetExclusion
+        screenshotData = try container.decodeIfPresent(Data.self, forKey: .screenshotData)
     }
 }
 
@@ -325,16 +377,47 @@ struct LedgerBudgetCategorySummary: Identifiable {
 }
 
 struct QuickEntryDraft {
+    var bookID: UUID?
     var kind: LedgerKind = .expense
+    var titleText = ""
     var amountText = ""
     var selectedCategory = LedgerCategory.defaultCategory(for: .expense)
+    var accountID: UUID?
     var paymentMethod = "支付宝"
+    var tags: [String] = []
     var note = ""
+    var date = Date()
+    var isExcludedFromStatistics = false
+    var isExcludedFromBudget = false
 
     var parsedAmount: Double? {
         let normalized = amountText.replacingOccurrences(of: ",", with: ".")
         return Double(normalized)
     }
+}
+
+enum LedgerHistoryScope: String, CaseIterable, Identifiable, Codable {
+    case currentBook = "当前账本"
+    case allBooks = "全部账本"
+
+    var id: String { rawValue }
+}
+
+struct LedgerHistoryPresentation: Equatable {
+    var scope: LedgerHistoryScope = .currentBook
+    var highlightedEntryIDs: [UUID] = []
+    var prefersFocusedBatch = false
+    var title: String?
+}
+
+enum LedgerNavigationDestination: Equatable {
+    case detail(entryID: UUID)
+    case history(LedgerHistoryPresentation)
+}
+
+struct LedgerNavigationRequest: Identifiable, Equatable {
+    let id = UUID()
+    let destination: LedgerNavigationDestination
 }
 
 enum DrawerDestination: Hashable {
@@ -698,11 +781,11 @@ extension DrawerShortcut {
             accent: .ledgerAccent,
             destination: .screen(.categories)),
         DrawerShortcut(
-            id: "tags",
-            title: "标签管理",
-            icon: "bookmark",
+            id: "history",
+            title: "全部记录",
+            icon: "text.document",
             accent: .ledgerGold,
-            destination: .placeholder("标签管理"))
+            destination: .screen(.history))
     ]
 
     static let quickTools: [DrawerShortcut] = [

@@ -4,24 +4,78 @@ struct QuickAddSheet: View {
     @ObservedObject var store: LedgerStore
 
     @Environment(\.dismiss) private var dismiss
-    @FocusState private var isAmountFocused: Bool
     @State private var draft = QuickEntryDraft()
+
+    var body: some View {
+        LedgerEntryEditorForm(
+            title: "快速记一笔",
+            store: store,
+            draft: $draft,
+            showsPrivacyCard: true,
+            shouldAutoFocusAmount: true) {
+                store.addEntry(from: draft)
+                dismiss()
+            }
+            .onAppear {
+                draft = store.makeDraft()
+            }
+    }
+}
+
+struct LedgerEntryEditorSheet: View {
+    @ObservedObject var store: LedgerStore
+    let entry: LedgerEntry
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft = QuickEntryDraft()
+
+    var body: some View {
+        LedgerEntryEditorForm(
+            title: "编辑记录",
+            store: store,
+            draft: $draft,
+            showsPrivacyCard: false,
+            shouldAutoFocusAmount: false) {
+                store.updateEntry(entry.id, from: draft)
+                dismiss()
+            }
+            .presentationDetents([.large])
+            .onAppear {
+                draft = store.makeDraft(from: entry)
+            }
+    }
+}
+
+private struct LedgerEntryEditorForm: View {
+    let title: String
+    @ObservedObject var store: LedgerStore
+    @Binding var draft: QuickEntryDraft
+    let showsPrivacyCard: Bool
+    let shouldAutoFocusAmount: Bool
+    let onSave: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var isAmountFocused: Bool
 
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 22) {
                     kindPicker
+                    titleField
                     amountField
                     categoryGrid
                     paymentPicker
+                    dateField
                     noteField
-                    privacyCard
+                    if showsPrivacyCard {
+                        privacyCard
+                    }
                 }
                 .padding(20)
             }
             .background(Color.ledgerCanvas)
-            .navigationTitle("快速记一笔")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -33,26 +87,27 @@ struct QuickAddSheet: View {
 
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("保存") {
-                        store.addEntry(from: draft)
-                        dismiss()
+                        onSave()
                     }
                     .fontWeight(.bold)
                     .disabled((draft.parsedAmount ?? 0) <= 0)
                 }
             }
         }
-        .presentationDetents([.fraction(0.78), .large])
+        .presentationDetents([.fraction(0.82), .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(Color.ledgerCanvas)
+        .onChange(of: draft.kind) { _, _ in
+            draft.selectedCategory = store.categories(for: draft.kind)
+                .first(where: { $0.id == draft.selectedCategory.id })
+                ?? store.categories(for: draft.kind).first
+                ?? LedgerCategory.defaultCategory(for: draft.kind)
+        }
         .onAppear {
-            draft = store.makeDraft()
+            guard shouldAutoFocusAmount else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                 isAmountFocused = true
             }
-        }
-        .onChange(of: draft.kind) { _, _ in
-            draft.selectedCategory = store.categories(for: draft.kind).first ?? LedgerCategory
-                .defaultCategory(for: draft.kind)
         }
     }
 
@@ -68,6 +123,21 @@ struct QuickAddSheet: View {
                 }
             }
             .pickerStyle(.segmented)
+        }
+    }
+
+    private var titleField: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("标题")
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+
+            TextField("例如：午饭、滴滴、工资到账", text: $draft.titleText)
+                .padding(18)
+                .background(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .font(.system(size: 16, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
         }
     }
 
@@ -166,6 +236,25 @@ struct QuickAddSheet: View {
                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             }
             .buttonStyle(.plain)
+        }
+    }
+
+    private var dateField: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("时间")
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+
+            DatePicker(
+                "记账时间",
+                selection: $draft.date,
+                displayedComponents: [.date, .hourAndMinute])
+                .labelsHidden()
+                .datePickerStyle(.compact)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(18)
+                .background(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
     }
 

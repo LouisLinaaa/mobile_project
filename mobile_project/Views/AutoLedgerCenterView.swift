@@ -3,6 +3,7 @@ import SwiftUI
 struct AutoLedgerCenterView: View {
     @EnvironmentObject private var store: LedgerStore
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
 
     @StateObject private var viewModel = AutoLedgerViewModel()
     @State private var helperMessage: String?
@@ -29,10 +30,19 @@ struct AutoLedgerCenterView: View {
             Text(helperMessage ?? "")
         }
         .task {
+            store.refreshAutoLedgerShortcutState()
             viewModel.refreshShortcutStatus()
             await viewModel.processPendingLaunchIfNeeded(store: store)
         }
         .onChange(of: store.autoLedgerPendingLaunch) { _, _ in
+            Task {
+                await viewModel.processPendingLaunchIfNeeded(store: store)
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            store.refreshAutoLedgerShortcutState()
+            viewModel.refreshShortcutStatus()
             Task {
                 await viewModel.processPendingLaunchIfNeeded(store: store)
             }

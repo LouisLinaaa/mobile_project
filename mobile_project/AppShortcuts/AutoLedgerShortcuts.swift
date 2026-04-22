@@ -296,7 +296,10 @@ private enum AutoLedgerDirectRunner {
                         parsedResult: result,
                         errorMessage: nil))
             }
-            let dialog = try AutoLedgerDirectSaver.save(envelope: result, into: snapshot)
+            let dialog = try AutoLedgerDirectSaver.save(
+                envelope: result,
+                imageData: request.imageData,
+                into: snapshot)
             AutoLedgerHandoffStore.markLastRunSucceeded()
             return dialog
         } catch {
@@ -372,6 +375,7 @@ private enum AutoLedgerDirectRunner {
 
 private enum AutoLedgerDirectSaver {
     static func save(envelope: AutoLedgerParseEnvelope,
+                     imageData: Data?,
                      into currentSnapshot: LedgerPersistenceSnapshot) throws -> String {
         let validEntries = envelope.entries.filter { ($0.amount ?? 0) > 0 }
         guard !validEntries.isEmpty else {
@@ -416,7 +420,8 @@ private enum AutoLedgerDirectSaver {
                     category: category,
                     paymentMethod: paymentMethod,
                     note: note,
-                    date: entry.occurredAt),
+                    date: entry.occurredAt,
+                    screenshotData: snapshot.appSettings.showRecordImages ? imageData : nil),
                 at: 0)
 
             savedCount += 1
@@ -567,8 +572,8 @@ private enum AutoLedgerDirectSaver {
 
 struct StartAutoLedgerIntent: AppIntent {
     static let title: LocalizedStringResource = "识别账单"
-    static let description = IntentDescription("接收快捷指令里的截图图像，直接完成账单识别并自动入账。")
-    static let openAppWhenRun = false
+    static let description = IntentDescription("接收快捷指令里的截图图像，打开 App 并交给自动记账中心完成识别和入账。")
+    static let openAppWhenRun = true
 
     @Parameter(
         title: "图片",
@@ -591,11 +596,12 @@ struct StartAutoLedgerIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         do {
-            let dialog = try await AutoLedgerDirectRunner.run(
+            _ = try await AutoLedgerHandoffStore.stageLaunch(
                 files: files,
                 ocrTextHint: ocrTextHint,
-                source: source.domainValue)
-            return .result(dialog: IntentDialog(stringLiteral: dialog))
+                source: source.domainValue,
+                educationState: .usage)
+            return .result(dialog: IntentDialog(stringLiteral: "已接收截图，正在打开 App 完成识别与自动入账。"))
         } catch {
             AutoLedgerHandoffStore.markLastRunFailed(error.localizedDescription)
             return .result(dialog: IntentDialog(stringLiteral: error.localizedDescription))

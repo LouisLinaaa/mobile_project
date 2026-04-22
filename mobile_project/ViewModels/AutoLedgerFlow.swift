@@ -764,6 +764,7 @@ final class AutoLedgerViewModel: ObservableObject {
     private let screenshotCache: AutoLedgerScreenshotCache
     private var cachedURL: URL?
     private var activeFlowSource: AutoLedgerShortcutSource?
+    private var lastParseEnvelope: AutoLedgerParseEnvelope?
     private var lastRecognizedImageData: Data?
     private var lastRecognizedOCRTextHint: String?
 
@@ -810,6 +811,7 @@ final class AutoLedgerViewModel: ObservableObject {
         errorMessage = nil
         successMessage = nil
         activeFlowSource = nil
+        lastParseEnvelope = nil
     }
 
     func processPendingLaunchIfNeeded(store: LedgerStore) async {
@@ -973,19 +975,25 @@ final class AutoLedgerViewModel: ObservableObject {
         let category = mapCategory(from: entry.category, categories: categories, kind: kind)
 
         let paymentMethod = mapPaymentMethod(from: entry.paymentMethod, store: store)
+        let accountID = store.matchingAccountID(for: paymentMethod)
 
         return AutoLedgerReviewDraft(
+            bookID: store.currentBook.id,
             amountText: formattedAmountText(entry.amount),
             kind: kind,
             categoryID: category.id,
+            accountID: accountID,
             paymentMethod: paymentMethod,
             occurredAt: entry.occurredAt,
             merchant: entry.merchant ?? "",
+            tags: [],
             note: entry.note ?? "",
             rawText: entry.rawText,
             confidence: entry.confidence,
             reason: entry.reason,
-            recognizedEntryCount: max(1, recognizedEntryCount))
+            recognizedEntryCount: max(1, recognizedEntryCount),
+            isExcludedFromStatistics: false,
+            isExcludedFromBudget: false)
     }
 
     private func mapCategory(from hint: String?, categories: [LedgerCategory], kind: LedgerKind) -> LedgerCategory {
@@ -1138,6 +1146,7 @@ final class AutoLedgerViewModel: ObservableObject {
             ocrTextHint: normalizedOCRTextHint)
 
         let result = try await service.parseReceipt(request)
+        lastParseEnvelope = result
         guard let primaryEntry = result.primaryEntry else {
             throw AutoLedgerServiceError.parseFailed
         }
@@ -1164,46 +1173,101 @@ final class AutoLedgerViewModel: ObservableObject {
             throw AutoLedgerServiceError.parseFailed
         }
 
-        let categories = store.categories(for: draft.kind)
-        let category = categories.first(where: { $0.id == draft.categoryID })
-            ?? fallbackCategory(from: categories, kind: draft.kind)
-
-        let note = draft.note.trimmingCharacters(in: .whitespacesAndNewlines)
-        let merchant = draft.merchant.trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = merchant.isEmpty ? (note.isEmpty ? category.name : note) : merchant
-
         flowState = .confirmed
+        let screenshotData = store.appSettings.showRecordImages ? lastRecognizedImageData : nil
+        let parsedEntries = lastParseEnvelope?.entries ?? []
+        let primaryIndex = lastParseEnvelope?.primaryIndex ?? 0
 
-        store.addEntry(
-            kind: draft.kind,
-            amount: amount,
-            category: category,
-            paymentMethod: draft.paymentMethod,
-            note: note,
-            title: title,
-            date: draft.occurredAt)
+        var createdEntries: [LedgerEntry] = []
+
+        if parsedEntries.count > 1 {
+            var savedCount = 0
+
+            for (index, entry) in parsedEntries.enumerated() {
+                if index == primaryIndex {
+                    if let createdEntry = saveReviewedDraft(
+                        draft,
+                        amount: amount,
+                        into: store,
+                        screenshotData: screenshotData) {
+                        createdEntries.append(createdEntry)
+                        savedCount += 1
+                    }
+                    continue
+                }
+
+                guard let createdEntry = saveParsedEntry(
+                    entry,
+                    into: store,
+                    screenshotData: screenshotData) else {
+                    continue
+                }
+
+                createdEntries.append(createdEntry)
+                savedCount += 1
+            }
+
+            let summaryTitles = createdEntries
+                .prefix(3)
+                .map(\.title)
+                .joined(separator: "、")
+            successMessage = summaryTitles.isEmpty
+                ? "已自动入账 \(savedCount) 笔。"
+                : "已自动入账 \(savedCount) 笔：\(summaryTitles)。"
+        } else {
+            let category = resolvedCategory(from: draft, store: store)
+            let note = draft.note.trimmingCharacters(in: .whitespacesAndNewlines)
+            let merchant = draft.merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = merchant.isEmpty ? (note.isEmpty ? category.name : note) : merchant
+
+            let createdEntry = store.addEntry(
+                bookID: draft.bookID ?? store.currentBook.id,
+                title: title,
+                amount: amount,
+                kind: draft.kind,
+                category: category,
+                accountID: draft.accountID ?? store.matchingAccountID(for: draft.paymentMethod),
+                paymentMethod: draft.paymentMethod,
+                tags: draft.tags,
+                note: note,
+                date: draft.occurredAt,
+                isExcludedFromStatistics: draft.isExcludedFromStatistics,
+                isExcludedFromBudget: draft.isExcludedFromBudget,
+                screenshotData: screenshotData)
+            createdEntries = [createdEntry]
+
+            var savedSummary = "已自动入账：\(LedgerFormatters.currency(amount))"
+            if !merchant.isEmpty {
+                savedSummary += " · \(merchant)"
+            } else {
+                savedSummary += " · \(category.name)"
+            }
+
+            if draft.recognizedEntryCount > 1 {
+                savedSummary += "。这次从多笔候选里优先选了最可信的一笔。"
+            } else if draft.confidence < 0.65 {
+                savedSummary += "。识别置信度偏低，如有偏差可去流水里修改。"
+            } else {
+                savedSummary += "。"
+            }
+
+            successMessage = savedSummary
+        }
+
+        if createdEntries.count == 1, let createdEntry = createdEntries.first {
+            store.presentEntryDetail(id: createdEntry.id)
+        } else if createdEntries.count > 1 {
+            store.presentHistory(
+                scope: .currentBook,
+                highlightedEntryIDs: createdEntries.map(\.id),
+                prefersFocusedBatch: true,
+                title: "本次自动入账")
+        }
 
         flowState = .saved
         errorMessage = nil
         store.appSettings.hasAcknowledgedShortcutInstall = true
         store.appSettings.lastShortcutEducationState = .usage
-
-        var savedSummary = "已自动入账：\(LedgerFormatters.currency(amount))"
-        if !merchant.isEmpty {
-            savedSummary += " · \(merchant)"
-        } else {
-            savedSummary += " · \(category.name)"
-        }
-
-        if draft.recognizedEntryCount > 1 {
-            savedSummary += "。这次从多笔候选里优先选了最可信的一笔。"
-        } else if draft.confidence < 0.65 {
-            savedSummary += "。识别置信度偏低，如有偏差可去流水里修改。"
-        } else {
-            savedSummary += "。"
-        }
-
-        successMessage = savedSummary
 
         Task { @MainActor in
             await screenshotCache.remove(cachedURL)
@@ -1214,5 +1278,63 @@ final class AutoLedgerViewModel: ObservableObject {
             AutoLedgerHandoffStore.markLastRunSucceeded()
         }
         refreshShortcutStatus()
+    }
+
+    private func saveReviewedDraft(
+        _ draft: AutoLedgerReviewDraft,
+        amount: Double,
+        into store: LedgerStore,
+        screenshotData: Data?) -> LedgerEntry? {
+        let category = resolvedCategory(from: draft, store: store)
+        let note = draft.note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let merchant = draft.merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = merchant.isEmpty ? (note.isEmpty ? category.name : note) : merchant
+
+        return store.addEntry(
+            bookID: draft.bookID ?? store.currentBook.id,
+            title: title,
+            amount: amount,
+            kind: draft.kind,
+            category: category,
+            accountID: draft.accountID ?? store.matchingAccountID(for: draft.paymentMethod),
+            paymentMethod: draft.paymentMethod,
+            tags: draft.tags,
+            note: note,
+            date: draft.occurredAt,
+            isExcludedFromStatistics: draft.isExcludedFromStatistics,
+            isExcludedFromBudget: draft.isExcludedFromBudget,
+            screenshotData: screenshotData)
+    }
+
+    private func saveParsedEntry(
+        _ entry: AutoLedgerParseEntry,
+        into store: LedgerStore,
+        screenshotData: Data?) -> LedgerEntry? {
+        guard let amount = entry.amount, amount > 0 else { return nil }
+
+        let kind = entry.normalizedKind ?? .expense
+        let categories = store.categories(for: kind)
+        let category = mapCategory(from: entry.category, categories: categories, kind: kind)
+        let paymentMethod = mapPaymentMethod(from: entry.paymentMethod, store: store)
+        let merchant = (entry.merchant ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let note = (entry.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = merchant.isEmpty ? (note.isEmpty ? category.name : note) : merchant
+
+        return store.addEntry(
+            kind: kind,
+            amount: amount,
+            category: category,
+            accountID: store.matchingAccountID(for: paymentMethod),
+            paymentMethod: paymentMethod,
+            note: note,
+            title: title,
+            date: entry.occurredAt,
+            screenshotData: screenshotData)
+    }
+
+    private func resolvedCategory(from draft: AutoLedgerReviewDraft, store: LedgerStore) -> LedgerCategory {
+        let categories = store.categories(for: draft.kind)
+        return categories.first(where: { $0.id == draft.categoryID })
+            ?? fallbackCategory(from: categories, kind: draft.kind)
     }
 }
