@@ -17,7 +17,7 @@ struct QuickAddSheet: View {
                 dismiss()
             }
             .onAppear {
-                draft = store.makeDraft()
+                draft = store.makeDraftWithAI()
             }
     }
 }

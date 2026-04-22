@@ -796,6 +796,12 @@ extension DrawerShortcut {
             accent: .ledgerAccent,
             destination: .screen(.csvImportExport)),
         DrawerShortcut(
+            id: "aibilling",
+            title: "AI 智能记账",
+            icon: "sparkles",
+            accent: .ledgerMint,
+            destination: .screen(.aiBilling)),
+        DrawerShortcut(
             id: "automation",
             title: "自动记账",
             icon: "doc.text.magnifyingglass",

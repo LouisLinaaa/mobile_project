@@ -9,10 +9,12 @@ struct AutoLedgerCenterView: View {
     @State private var helperMessage: String?
     @State private var isBlueprintPresented = false
     @State private var isDebugExpanded = false
+    @State private var isAIBillingPresented = false
 
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
+                aiEntryCard
                 summaryCard
                 shortcutCard
                 triggerCard
@@ -52,6 +54,54 @@ struct AutoLedgerCenterView: View {
                 onOpenEditor: openShortcutEditor,
                 onOpenShortcutsApp: openShortcutsApp)
         }
+        .sheet(isPresented: $isAIBillingPresented) {
+            AIBillingView()
+                .environmentObject(store)
+        }
+    }
+
+    // MARK: - AI Entry Card
+
+    private var aiEntryCard: some View {
+        Button { isAIBillingPresented = true } label: {
+            HStack(spacing: 16) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color.ledgerMint.opacity(0.15))
+                        .frame(width: 56, height: 56)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(Color.ledgerMint)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text("AI 智能记账")
+                            .font(.system(size: 17, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.ledgerText)
+                        Text("截图 · 语音")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Color.ledgerMint)
+                            .clipShape(Capsule())
+                    }
+                    Text("上传支付截图或说一句话，自动识别金额和分类")
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.ledgerMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color.ledgerMuted.opacity(0.5))
+            }
+            .padding(16)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .shadow(color: Color.black.opacity(0.05), radius: 12, x: 0, y: 4)
+        }
+        .buttonStyle(LedgerResponsiveButtonStyle())
     }
 
     private var backgroundView: some View {
