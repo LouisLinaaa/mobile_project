@@ -1,7 +1,15 @@
 # WidgetSupport
 
-中文 / Chinese:
-放置主应用与 Widget 之间共享的数据快照和桥接类型，用于把主应用状态安全地传递给小组件。
+Bridge layer shared by the main app and the widget extension.
 
-English:
-Contains snapshot models and bridge types shared between the app and widgets, used to safely expose app state to WidgetKit.
+## Main File
+
+- [WidgetSnapshotStore.swift](WidgetSnapshotStore.swift): converts app state into the serialized snapshot consumed by `mobile_project_widgets`
+
+## Purpose
+
+This folder exists so widget-facing data stays:
+
+- explicit
+- serializable
+- decoupled from large in-memory app objects

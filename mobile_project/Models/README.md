@@ -1,7 +1,16 @@
 # Models
 
-中文 / Chinese:
-放置领域模型、枚举和与业务结构相关的基础类型。这里的定义应尽量稳定、可序列化，并被视图和状态层共同复用。
+Shared domain and transport models used across the app and automation flows.
 
-English:
-Contains domain models, enums, and shared business types. Definitions here should stay stable, serializable, and reusable across views and state management.
+## Main Files
+
+- [LedgerModels.swift](LedgerModels.swift): books, entries, accounts, categories, budgets, statistics-facing structures
+- [AutoLedgerModels.swift](AutoLedgerModels.swift): receipt parsing requests, review drafts, debug snapshots, and OpenAI payloads
+
+## Rule of Thumb
+
+Types here should stay:
+
+- serializable
+- UI-agnostic where practical
+- safe to share across views, store logic, widgets, and shortcuts

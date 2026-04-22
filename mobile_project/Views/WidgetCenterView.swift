@@ -444,7 +444,7 @@ struct WidgetCenterView: View {
 
             guideStep(index: 1, text: "返回主屏幕后长按空白区域，进入编辑模式。")
             guideStep(index: 2, text: "点击左上角“编辑”并选择“添加小组件”。")
-            guideStep(index: 3, text: "在小组件列表中搜索“本地记账”。")
+            guideStep(index: 3, text: "在小组件列表中搜索“Monee”。")
             guideStep(index: 4, text: "选择你喜欢的尺寸后添加并拖动到合适位置。")
         }
         .padding(20)
@@ -474,7 +474,7 @@ struct WidgetCenterView: View {
                 .font(.system(size: 22, weight: .black, design: .rounded))
                 .foregroundStyle(Color.ledgerText)
 
-            faqItem(question: "为什么找不到桌面小组件？", answer: "请确认系统版本与桌面编辑权限，并在小组件列表中搜索“本地记账”。")
+            faqItem(question: "为什么找不到桌面小组件？", answer: "请确认系统版本与桌面编辑权限，并在小组件列表中搜索“Monee”。")
             faqItem(question: "小组件多久刷新一次？", answer: "默认按系统节电策略刷新；手动打开 App 后会立即同步最新数据。")
             faqItem(question: "小组件展示的是实时金额吗？", answer: "展示的是最近同步快照，确保稳定和省电。进入 App 后可查看完整实时明细。")
         }

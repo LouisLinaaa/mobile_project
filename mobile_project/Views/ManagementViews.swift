@@ -2060,7 +2060,7 @@ private struct AboutAppView: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("本地记账")
+                    Text("Monee")
                         .font(.system(size: 24, weight: .black, design: .rounded))
                         .foregroundStyle(Color.ledgerText)
                     Text("专注记录效率与隐私保护的轻量记账应用。")

@@ -1,7 +1,19 @@
 # mobile_project_widgets
 
-中文 / Chinese:
-小组件扩展 Target，负责桌面组件入口、预览和不同 Widget 类型的展示逻辑。
+Widget extension target for `Monee`.
 
-English:
-Widget extension target responsible for widget entry points, previews, and the display logic for the supported WidgetKit surfaces.
+## Responsibility
+
+This target renders the WidgetKit surfaces backed by the shared snapshot payload from the main app.
+
+## Supported Widgets
+
+- today expense
+- budget progress
+- quick action
+- account overview
+- auto-ledger status
+
+## Key File
+
+- [LedgerWidgetsBundle.swift](LedgerWidgetsBundle.swift): widget bundle, timeline provider, styling, and per-widget views

@@ -1,7 +1,18 @@
 # Views
 
-中文 / Chinese:
-放置 SwiftUI 页面、组件和交互实现。这里优先组织用户可见功能，包括首页、预算管理、统计、资产、设置以及弹窗编辑器。
+SwiftUI screens and feature composition for `Monee`.
 
-English:
-Contains SwiftUI screens, components, and interaction logic. This directory focuses on user-facing features such as home, budget management, statistics, assets, settings, and editor sheets.
+## Major Screens
+
+- [HomeView.swift](HomeView.swift): dashboard and primary navigation
+- [ManagementViews.swift](ManagementViews.swift): management panels, settings, import/export, backup, about
+- [BudgetManagementView.swift](BudgetManagementView.swift): budget configuration and tracking
+- [AutoLedgerCenterView.swift](AutoLedgerCenterView.swift): automation and shortcut education flow
+- [WidgetCenterView.swift](WidgetCenterView.swift): widget discovery and setup guidance
+- [QuickAddSheet.swift](QuickAddSheet.swift): fast transaction entry
+
+## Current Refactor Direction
+
+This folder is functional, but some files are still oversized.
+
+The next cleanup pass should keep splitting feature-heavy files into smaller, dedicated view units without moving business logic back into the view layer.

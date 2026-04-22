@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		04C78B312F962D7400C7E519 /* Vision.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04C78B302F962D6F00C7E519 /* Vision.framework */; };
 		04C78B332F962D8100C7E519 /* Speech.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04C78B322F962D8100C7E519 /* Speech.framework */; };
+		04C78B342F962D8200C7E519 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 04C78B352F962D8200C7E519 /* Assets.xcassets */; };
 		A00000000000000000000001 /* MobileProjectApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000011 /* MobileProjectApp.swift */; };
 		A00000000000000000000002 /* LedgerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000012 /* LedgerModels.swift */; };
 		A00000000000000000000003 /* LedgerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000013 /* LedgerStore.swift */; };
@@ -56,6 +57,7 @@
 /* Begin PBXFileReference section */
 		04C78B302F962D6F00C7E519 /* Vision.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Vision.framework; path = System/Library/Frameworks/Vision.framework; sourceTree = SDKROOT; };
 		04C78B322F962D8100C7E519 /* Speech.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Speech.framework; path = System/Library/Frameworks/Speech.framework; sourceTree = SDKROOT; };
+		04C78B352F962D8200C7E519 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A00000000000000000000010 /* mobile_project.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mobile_project.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A00000000000000000000011 /* MobileProjectApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileProjectApp.swift; sourceTree = "<group>"; };
 		A00000000000000000000012 /* LedgerModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LedgerModels.swift; sourceTree = "<group>"; };
@@ -124,6 +126,7 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000011 /* MobileProjectApp.swift */,
+				04C78B352F962D8200C7E519 /* Assets.xcassets */,
 				A0000000000000000000006F /* Info.plist */,
 				A0000000000000000000006D /* mobile_project.entitlements */,
 				A00000000000000000000033 /* Models */,
@@ -285,6 +288,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				04C78B342F962D8200C7E519 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -438,6 +442,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APP_GROUP_IDENTIFIER = group.com.github.louislinaa.ledgerlab;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_ENTITLEMENTS = mobile_project/mobile_project.entitlements;
@@ -467,6 +472,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APP_GROUP_IDENTIFIER = group.com.github.louislinaa.ledgerlab;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_ENTITLEMENTS = mobile_project/mobile_project.entitlements;
