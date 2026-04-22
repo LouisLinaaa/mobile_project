@@ -181,7 +181,7 @@ struct WidgetCenterView: View {
     }
 
     private var todayExpensePreview: some View {
-        let expenseEntries = store.todayEntries.filter { $0.kind == .expense }
+        let expenseEntries = store.todayStatisticEntries.filter { $0.kind == .expense }
         let todayExpenseTotal = expenseEntries.reduce(0) { $0 + $1.amount }
 
         return VStack(alignment: .leading, spacing: 10) {
@@ -234,7 +234,7 @@ struct WidgetCenterView: View {
                 Text(LedgerFormatters.currency(store.budgetLimit ?? 0))
                     .font(.system(size: 18, weight: .black, design: .rounded))
                     .foregroundStyle(Color.ledgerIncome)
-                Text("已使用 \(LedgerFormatters.currency(store.currentMonthExpense))")
+                Text("已使用 \(LedgerFormatters.currency(store.currentMonthBudgetExpense))")
                     .font(.system(size: 14, weight: .medium, design: .rounded))
                     .foregroundStyle(Color.ledgerMuted)
             }

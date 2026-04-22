@@ -131,6 +131,8 @@ enum LedgerPersistenceStore {
 final class LedgerStore: ObservableObject {
     @Published var isBalanceVisible = true
     @Published var isQuickAddPresented = false
+    @Published private(set) var historyPresentation = LedgerHistoryPresentation()
+    @Published var entryNavigationRequest: LedgerNavigationRequest?
     @Published private(set) var autoLedgerPendingLaunch: AutoLedgerLaunchPayload?
     @Published private(set) var autoLedgerShortcutStatus = AutoLedgerHandoffStore.loadStatus()
     @Published var appSettings: AppSettings {
@@ -243,11 +245,17 @@ final class LedgerStore: ObservableObject {
         }
     }
 
+    var paymentAccounts: [LedgerAccount] {
+        accounts.sorted { lhs, rhs in
+            if lhs.group.affectsAssets != rhs.group.affectsAssets {
+                return lhs.group.affectsAssets && !rhs.group.affectsAssets
+            }
+            return lhs.balance > rhs.balance
+        }
+    }
+
     var paymentMethods: [String] {
-        uniqueStrings(
-            accounts
-                .filter { $0.group != .credit && $0.group != .loan }
-                .map(\.name) + ["支付宝", "微信", "银行卡", "现金"])
+        uniqueStrings(accounts.map(\.name) + ["支付宝", "微信", "银行卡", "现金", "待确认"])
     }
 
     var currentBook: LedgerBook {
@@ -264,16 +272,28 @@ final class LedgerStore: ObservableObject {
             .sorted { $0.date > $1.date }
     }
 
+    var currentBookStatisticEntries: [LedgerEntry] {
+        currentBookEntries.filter(isIncludedInStatistics(_:))
+    }
+
+    var currentBookBudgetEntries: [LedgerEntry] {
+        currentBookEntries.filter(isIncludedInBudget(_:))
+    }
+
     var budgetLimit: Double? {
         bookBudget(for: currentBook.id)?.monthlyLimit
     }
 
     var currentMonthExpense: Double {
-        monthlyTotal(kind: .expense, for: currentBook.id)
+        statisticsMonthlyTotal(kind: .expense, for: currentBook.id)
     }
 
     var currentMonthIncome: Double {
-        monthlyTotal(kind: .income, for: currentBook.id)
+        statisticsMonthlyTotal(kind: .income, for: currentBook.id)
+    }
+
+    var currentMonthBudgetExpense: Double {
+        budgetMonthlyExpense(for: currentBook.id)
     }
 
     var currentStatisticsMonthInterval: DateInterval {
@@ -302,17 +322,17 @@ final class LedgerStore: ObservableObject {
 
     var budgetProgress: Double {
         guard let budgetLimit, budgetLimit > 0 else { return 0 }
-        return min(currentMonthExpense / budgetLimit, 1)
+        return min(currentMonthBudgetExpense / budgetLimit, 1)
     }
 
     var currentBudgetRemaining: Double? {
         guard let budgetLimit else { return nil }
-        return max(budgetLimit - currentMonthExpense, 0)
+        return max(budgetLimit - currentMonthBudgetExpense, 0)
     }
 
     var currentBudgetOverspent: Double {
         guard let budgetLimit else { return 0 }
-        return max(currentMonthExpense - budgetLimit, 0)
+        return max(currentMonthBudgetExpense - budgetLimit, 0)
     }
 
     var currentStatisticsMonthDayCount: Int {
@@ -368,6 +388,10 @@ final class LedgerStore: ObservableObject {
         currentBookEntries
             .filter { calendar.isDateInToday($0.date) }
             .sorted { $0.date > $1.date }
+    }
+
+    var todayStatisticEntries: [LedgerEntry] {
+        todayEntries.filter(isIncludedInStatistics(_:))
     }
 
     var monthRecordedDays: Set<Int> {
@@ -429,6 +453,15 @@ final class LedgerStore: ObservableObject {
         autoLedgerPendingLaunch != nil
     }
 
+    var recentTags: [String] {
+        uniqueStrings(
+            entries
+                .sorted { $0.date > $1.date }
+                .flatMap(\.tags)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty })
+    }
+
     func categories(for kind: LedgerKind) -> [LedgerCategory] {
         switch kind {
         case .expense:
@@ -467,30 +500,111 @@ final class LedgerStore: ObservableObject {
             .sorted { $0.balance > $1.balance }
     }
 
-    func makeDraft() -> QuickEntryDraft {
-        QuickEntryDraft(
-            kind: .expense,
-            amountText: "",
-            selectedCategory: categories(for: .expense).first ?? LedgerCategory.defaultCategory(for: .expense),
-            paymentMethod: paymentMethods.first ?? "支付宝",
-            note: "")
+    func entries(scope: LedgerHistoryScope) -> [LedgerEntry] {
+        let source: [LedgerEntry]
+
+        switch scope {
+        case .currentBook:
+            source = currentBookEntries
+        case .allBooks:
+            source = entries
+        }
+
+        return source.sorted { lhs, rhs in
+            if lhs.date == rhs.date {
+                return lhs.id.uuidString > rhs.id.uuidString
+            }
+            return lhs.date > rhs.date
+        }
     }
 
-    func addEntry(from draft: QuickEntryDraft) {
-        guard let amount = draft.parsedAmount, amount > 0 else { return }
+    func entry(withID id: UUID) -> LedgerEntry? {
+        entries.first { $0.id == id }
+    }
+
+    func book(withID id: UUID) -> LedgerBook? {
+        books.first { $0.id == id }
+    }
+
+    func account(withID id: UUID?) -> LedgerAccount? {
+        guard let id else { return nil }
+        return accounts.first { $0.id == id }
+    }
+
+    func resolvedPaymentAccountName(for entry: LedgerEntry) -> String {
+        if let account = account(withID: entry.accountID) {
+            return account.name
+        }
+
+        let trimmed = entry.paymentMethod.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "待确认" : trimmed
+    }
+
+    func matchingAccountID(for paymentMethod: String, preferredAccountID: UUID? = nil) -> UUID? {
+        resolvedAccountID(from: paymentMethod, preferredAccountID: preferredAccountID)
+    }
+
+    func makeDraft() -> QuickEntryDraft {
+        let defaultAccount = paymentAccounts.first
+
+        return QuickEntryDraft(
+            bookID: currentBook.id,
+            kind: .expense,
+            titleText: "",
+            amountText: "",
+            selectedCategory: categories(for: .expense).first ?? LedgerCategory.defaultCategory(for: .expense),
+            accountID: defaultAccount?.id,
+            paymentMethod: defaultAccount?.name ?? (paymentMethods.first ?? "支付宝"),
+            tags: [],
+            note: "",
+            date: Date(),
+            isExcludedFromStatistics: false,
+            isExcludedFromBudget: false)
+    }
+
+    func makeDraft(from entry: LedgerEntry) -> QuickEntryDraft {
+        let availableCategories = categories(for: entry.kind)
+        let category = availableCategories.first(where: { $0.id == entry.category.id }) ?? entry.category
+        let resolvedAccountID = resolvedAccountID(from: entry.paymentMethod, preferredAccountID: entry.accountID)
+
+        return QuickEntryDraft(
+            bookID: entry.bookID,
+            kind: entry.kind,
+            titleText: entry.title,
+            amountText: String(format: "%.2f", entry.amount),
+            selectedCategory: category,
+            accountID: resolvedAccountID,
+            paymentMethod: resolvedPaymentMethod(
+                accountID: resolvedAccountID,
+                paymentMethod: entry.paymentMethod),
+            tags: entry.tags,
+            note: entry.note,
+            date: entry.date,
+            isExcludedFromStatistics: entry.isExcludedFromStatistics,
+            isExcludedFromBudget: entry.isExcludedFromBudget)
+    }
+
+    @discardableResult
+    func addEntry(from draft: QuickEntryDraft) -> LedgerEntry? {
+        guard let amount = draft.parsedAmount, amount > 0 else { return nil }
 
         let category = categories(for: draft.kind).first(where: { $0.id == draft.selectedCategory.id }) ?? draft
             .selectedCategory
-        let title = draft.note.isEmpty ? category.name : draft.note
+        let title = resolvedTitle(from: draft, category: category)
 
-        addEntry(
-            kind: draft.kind,
-            amount: amount,
-            category: category,
-            paymentMethod: draft.paymentMethod,
-            note: draft.note,
+        return addEntry(
+            bookID: draft.bookID ?? currentBook.id,
             title: title,
-            date: Date())
+            amount: amount,
+            kind: draft.kind,
+            category: category,
+            accountID: draft.accountID,
+            paymentMethod: draft.paymentMethod,
+            tags: draft.tags,
+            note: draft.note,
+            date: draft.date,
+            isExcludedFromStatistics: draft.isExcludedFromStatistics,
+            isExcludedFromBudget: draft.isExcludedFromBudget)
     }
 
     func refreshAutoLedgerShortcutState() {
@@ -511,25 +625,34 @@ final class LedgerStore: ObservableObject {
         return payload
     }
 
+    @discardableResult
     func addEntry(
         kind: LedgerKind,
         amount: Double,
         category: LedgerCategory,
+        accountID: UUID? = nil,
         paymentMethod: String,
+        tags: [String] = [],
         note: String,
         title: String,
-        date: Date) {
-        let entry = LedgerEntry(
+        date: Date,
+        isExcludedFromStatistics: Bool = false,
+        isExcludedFromBudget: Bool = false,
+        screenshotData: Data? = nil) -> LedgerEntry {
+        addEntry(
             bookID: currentBook.id,
             title: title,
             amount: amount,
             kind: kind,
             category: category,
+            accountID: accountID,
             paymentMethod: paymentMethod,
+            tags: tags,
             note: note,
-            date: date)
-
-        entries.insert(entry, at: 0)
+            date: date,
+            isExcludedFromStatistics: isExcludedFromStatistics,
+            isExcludedFromBudget: isExcludedFromBudget,
+            screenshotData: screenshotData)
     }
 
     // MARK: - AI Draft Hand-off
@@ -546,27 +669,126 @@ final class LedgerStore: ObservableObject {
 
     // MARK: - CSV Import (bookID-aware addEntry)
 
+    @discardableResult
     func addEntry(
         bookID: UUID,
         title: String,
         amount: Double,
         kind: LedgerKind,
         category: LedgerCategory,
+        accountID: UUID? = nil,
         paymentMethod: String,
+        tags: [String] = [],
         note: String,
-        date: Date
-    ) {
-        let entry = LedgerEntry(
-            bookID: bookID,
-            title: title,
-            amount: amount,
-            kind: kind,
-            category: category,
-            paymentMethod: paymentMethod,
-            note: note,
-            date: date
-        )
+        date: Date,
+        isExcludedFromStatistics: Bool = false,
+        isExcludedFromBudget: Bool = false,
+        screenshotData: Data? = nil) -> LedgerEntry {
+        let entry = normalizedEntry(
+            LedgerEntry(
+                bookID: bookID,
+                title: title,
+                amount: amount,
+                kind: kind,
+                category: category,
+                paymentMethod: paymentMethod,
+                accountID: accountID,
+                tags: tags,
+                note: note,
+                date: date,
+                isExcludedFromStatistics: isExcludedFromStatistics,
+                isExcludedFromBudget: isExcludedFromBudget,
+                screenshotData: screenshotData),
+            fallbackBookID: currentBook.id)
         entries.insert(entry, at: 0)
+        return entry
+    }
+
+    func updateEntry(_ entryID: UUID, from draft: QuickEntryDraft) {
+        guard let index = entries.firstIndex(where: { $0.id == entryID }),
+              let amount = draft.parsedAmount,
+              amount > 0 else { return }
+
+        let existingEntry = entries[index]
+        let requestedBookID = draft.bookID
+        let bookID = requestedBookID.flatMap { requestedID in
+            books.contains(where: { $0.id == requestedID }) ? requestedID : nil
+        } ?? currentBook.id
+        let categoryOptions = categorySchemes
+            .flatMap { draft.kind == .expense ? $0.expenseCategories : $0.incomeCategories }
+        let category = categoryOptions.first(where: { $0.id == draft.selectedCategory.id })
+            ?? categories(for: draft.kind).first
+            ?? LedgerCategory.defaultCategory(for: draft.kind)
+        let title = resolvedTitle(from: draft, category: category)
+        let paymentMethod = resolvedPaymentMethod(accountID: draft.accountID, paymentMethod: draft.paymentMethod)
+
+        entries[index] = normalizedEntry(
+            LedgerEntry(
+                id: existingEntry.id,
+                bookID: bookID,
+                title: title,
+                amount: amount,
+                kind: draft.kind,
+                category: category,
+                paymentMethod: paymentMethod,
+                accountID: draft.accountID,
+                tags: normalizedTags(draft.tags),
+                note: draft.note.trimmingCharacters(in: .whitespacesAndNewlines),
+                date: draft.date,
+                isExcludedFromStatistics: draft.isExcludedFromStatistics,
+                isExcludedFromBudget: draft.isExcludedFromBudget,
+                screenshotData: existingEntry.screenshotData),
+            fallbackBookID: currentBook.id)
+    }
+
+    func updateEntry(_ entryID: UUID, mutate: (inout LedgerEntry) -> Void) {
+        guard let index = entries.firstIndex(where: { $0.id == entryID }) else { return }
+        var updatedEntry = entries[index]
+        mutate(&updatedEntry)
+        entries[index] = normalizedEntry(updatedEntry, fallbackBookID: currentBook.id)
+    }
+
+    func updateEntryScreenshot(_ entryID: UUID, data: Data?) {
+        updateEntry(entryID) { entry in
+            entry.screenshotData = data
+        }
+    }
+
+    func deleteEntry(id entryID: UUID) {
+        entries.removeAll { $0.id == entryID }
+        historyPresentation.highlightedEntryIDs.removeAll { $0 == entryID }
+
+        if case .detail(let selectedID) = entryNavigationRequest?.destination, selectedID == entryID {
+            entryNavigationRequest = nil
+        }
+    }
+
+    func presentHistory(
+        scope: LedgerHistoryScope = .currentBook,
+        highlightedEntryIDs: [UUID] = [],
+        prefersFocusedBatch: Bool = false,
+        filteredDate: Date? = nil,
+        title: String? = nil) {
+        let normalizedDate = filteredDate.map { calendar.startOfDay(for: $0) }
+        historyPresentation = LedgerHistoryPresentation(
+            scope: scope,
+            highlightedEntryIDs: highlightedEntryIDs,
+            prefersFocusedBatch: prefersFocusedBatch,
+            filteredDate: normalizedDate,
+            title: title)
+        entryNavigationRequest = LedgerNavigationRequest(destination: .history(historyPresentation))
+    }
+
+    func presentEntryDetail(id entryID: UUID) {
+        entryNavigationRequest = LedgerNavigationRequest(destination: .detail(entryID: entryID))
+    }
+
+    func clearEntryNavigationRequest() {
+        entryNavigationRequest = nil
+    }
+
+    func clearHistoryPresentation() {
+        historyPresentation = LedgerHistoryPresentation(scope: .currentBook)
     }
 
     func isInCurrentStatisticsMonth(_ date: Date) -> Bool {
@@ -636,6 +858,7 @@ final class LedgerStore: ObservableObject {
             .filter { entry in
                 entry.bookID == bookID &&
                     entry.kind == .expense &&
+                    isIncludedInBudget(entry) &&
                     entry.category.id == categoryID &&
                     interval.contains(entry.date)
             }
@@ -648,6 +871,7 @@ final class LedgerStore: ObservableObject {
             .filter { entry in
                 entry.bookID == bookID &&
                     entry.kind == .expense &&
+                    isIncludedInBudget(entry) &&
                     calendar.startOfDay(for: entry.date) == dayStart
             }
             .reduce(0) { $0 + $1.amount }
@@ -776,6 +1000,8 @@ final class LedgerStore: ObservableObject {
 
     func clearAllHistoryEntries() {
         entries.removeAll()
+        clearHistoryPresentation()
+        clearEntryNavigationRequest()
     }
 
     func addBook(name: String, note: String) {
@@ -795,11 +1021,11 @@ final class LedgerStore: ObservableObject {
     }
 
     func bookMonthlyExpense(_ book: LedgerBook) -> Double {
-        monthlyTotal(kind: .expense, for: book.id)
+        statisticsMonthlyTotal(kind: .expense, for: book.id)
     }
 
     func bookMonthlyIncome(_ book: LedgerBook) -> Double {
-        monthlyTotal(kind: .income, for: book.id)
+        statisticsMonthlyTotal(kind: .income, for: book.id)
     }
 
     func addAccount(template: LedgerAccountTemplate, customName: String, balance: Double) {
@@ -829,6 +1055,15 @@ final class LedgerStore: ObservableObject {
 
     func deleteAccount(_ account: LedgerAccount) {
         accounts.removeAll { $0.id == account.id }
+        entries = entries.map { entry in
+            guard entry.accountID == account.id else { return entry }
+            var updatedEntry = entry
+            updatedEntry.accountID = nil
+            if updatedEntry.paymentMethod.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                updatedEntry.paymentMethod = account.name
+            }
+            return updatedEntry
+        }
     }
 
     func addCategoryScheme(name: String, note: String) {
@@ -924,15 +1159,131 @@ final class LedgerStore: ObservableObject {
         categoryBudgets.removeAll { $0.categoryID == categoryID }
     }
 
-    private func monthlyTotal(kind: LedgerKind, for bookID: UUID) -> Double {
+    private func isIncludedInStatistics(_ entry: LedgerEntry) -> Bool {
+        !entry.isExcludedFromStatistics
+    }
+
+    private func isIncludedInBudget(_ entry: LedgerEntry) -> Bool {
+        !entry.isExcludedFromStatistics && !entry.isExcludedFromBudget
+    }
+
+    private func statisticsMonthlyTotal(kind: LedgerKind, for bookID: UUID) -> Double {
         let interval = currentStatisticsMonthInterval
         return entries
             .filter { entry in
                 entry.bookID == bookID &&
                     entry.kind == kind &&
+                    isIncludedInStatistics(entry) &&
                     interval.contains(entry.date)
             }
             .reduce(0) { $0 + $1.amount }
+    }
+
+    private func budgetMonthlyExpense(for bookID: UUID) -> Double {
+        let interval = currentStatisticsMonthInterval
+        return entries
+            .filter { entry in
+                entry.bookID == bookID &&
+                    entry.kind == .expense &&
+                    isIncludedInBudget(entry) &&
+                    interval.contains(entry.date)
+            }
+            .reduce(0) { $0 + $1.amount }
+    }
+
+    private func resolvedAccountID(from paymentMethod: String, preferredAccountID: UUID?) -> UUID? {
+        if let preferredAccountID,
+           accounts.contains(where: { $0.id == preferredAccountID }) {
+            return preferredAccountID
+        }
+
+        let trimmed = paymentMethod.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if let exactMatch = accounts.first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+            return exactMatch.id
+        }
+
+        let normalized = normalizedLookupText(trimmed)
+
+        func firstAccount(matching candidates: [String], groups: [LedgerAccountGroup]? = nil) -> UUID? {
+            accounts.first { account in
+                let sameGroup = groups.map { $0.contains(account.group) } ?? true
+                guard sameGroup else { return false }
+                let accountText = normalizedLookupText(account.name)
+                return candidates.contains(where: { keyword in
+                    let normalizedKeyword = normalizedLookupText(keyword)
+                    return accountText.contains(normalizedKeyword)
+                })
+            }?.id
+        }
+
+        if normalized.contains("wechat") || normalized.contains("微信") {
+            return firstAccount(matching: ["微信", "wechat"])
+        }
+
+        if normalized.contains("alipay") || normalized.contains("支付宝") {
+            return firstAccount(matching: ["支付宝", "alipay"])
+        }
+
+        if normalized.contains("cash") || normalized.contains("现金") {
+            return firstAccount(matching: ["现金", "cash"])
+        }
+
+        if normalized.contains("credit") || normalized.contains("信用卡") {
+            return firstAccount(matching: ["信用卡", "credit", "visa", "mastercard"], groups: [.credit])
+        }
+
+        if normalized.contains("card") || normalized.contains("银行卡") || normalized.contains("储蓄卡") {
+            return firstAccount(matching: ["银行卡", "储蓄卡", "借记卡", "card"], groups: [.asset, .credit])
+        }
+
+        return nil
+    }
+
+    private func resolvedPaymentMethod(accountID: UUID?, paymentMethod: String) -> String {
+        if let account = account(withID: accountID) {
+            return account.name
+        }
+
+        let trimmed = paymentMethod.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "待确认" : trimmed
+    }
+
+    private func normalizedTags(_ tags: [String]) -> [String] {
+        uniqueStrings(
+            tags
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty })
+    }
+
+    private func normalizedLookupText(_ text: String) -> String {
+        text
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "余额", with: "")
+            .replacingOccurrences(of: "账户", with: "")
+    }
+
+    private func normalizedEntry(_ entry: LedgerEntry, fallbackBookID: UUID) -> LedgerEntry {
+        var normalized = entry
+        normalized.bookID = books.contains(where: { $0.id == normalized.bookID }) ? normalized.bookID : fallbackBookID
+        normalized.accountID = resolvedAccountID(
+            from: normalized.paymentMethod,
+            preferredAccountID: normalized.accountID)
+        normalized.paymentMethod = resolvedPaymentMethod(
+            accountID: normalized.accountID,
+            paymentMethod: normalized.paymentMethod)
+        normalized.title = normalized.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        normalized.note = normalized.note.trimmingCharacters(in: .whitespacesAndNewlines)
+        normalized.tags = normalizedTags(normalized.tags)
+        normalized.isExcludedFromBudget = normalized.isExcludedFromStatistics ? true : normalized.isExcludedFromBudget
+
+        if normalized.title.isEmpty {
+            normalized.title = normalized.note.isEmpty ? normalized.category.name : normalized.note
+        }
+
+        return normalized
     }
 
     private func migratedBookBudgets(
@@ -998,12 +1349,22 @@ final class LedgerStore: ObservableObject {
         return result
     }
 
+    private func resolvedTitle(from draft: QuickEntryDraft, category: LedgerCategory) -> String {
+        let trimmedTitle = draft.titleText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedTitle.isEmpty {
+            return trimmedTitle
+        }
+
+        let trimmedNote = draft.note.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedNote.isEmpty ? category.name : trimmedNote
+    }
+
     private func syncWidgetSnapshot() {
         LedgerWidgetSnapshotStore.save(makeWidgetSnapshot())
     }
 
     private func makeWidgetSnapshot() -> LedgerWidgetSnapshot {
-        let todayExpenseEntries = todayEntries.filter { $0.kind == .expense }
+        let todayExpenseEntries = todayStatisticEntries.filter { $0.kind == .expense }
         let grouped = Dictionary(grouping: todayExpenseEntries, by: { $0.category.id })
 
         let topCategories = grouped.compactMap { _, items -> LedgerWidgetCategorySnapshot? in
@@ -1205,12 +1566,14 @@ final class LedgerStore: ObservableObject {
             .selectedCategorySchemeID : restoredSchemes[0].id
 
         appSettings = snapshot.appSettings
-        entries = snapshot.entries
-        accounts = snapshot.accounts
         books = restoredBooks
+        accounts = snapshot.accounts
         categorySchemes = restoredSchemes
         selectedBookID = resolvedBookID
         selectedCategorySchemeID = resolvedSchemeID
+        entries = snapshot.entries
+            .map { normalizedEntry($0, fallbackBookID: resolvedBookID) }
+            .sorted { $0.date > $1.date }
         bookBudgets = migratedBookBudgets(
             snapshot.bookBudgets,
             legacyBudgetLimit: snapshot.budgetLimit,
@@ -1219,6 +1582,8 @@ final class LedgerStore: ObservableObject {
         categoryBudgets = sanitizedCategoryBudgets(
             snapshot.categoryBudgets,
             books: restoredBooks)
+        clearHistoryPresentation()
+        clearEntryNavigationRequest()
         flushPendingSettingsPersistence()
         flushPendingLedgerStatePersistence()
         syncWidgetSnapshot()

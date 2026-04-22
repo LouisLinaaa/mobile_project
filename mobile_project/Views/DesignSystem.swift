@@ -121,6 +121,13 @@ enum LedgerFormatters {
         return formatter
     }()
 
+    private static let historyTitleFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.dateFormat = "M月d日 EEEE"
+        return formatter
+    }()
+
     static func currency(_ value: Double) -> String {
         currencyFormatter.string(from: NSNumber(value: value)) ?? "¥0.00"
     }
@@ -147,5 +154,9 @@ enum LedgerFormatters {
 
     static func shortTimestamp(_ date: Date) -> String {
         "\(bookDate(date)) \(entryTime(for: date))"
+    }
+
+    static func historyTitle(for date: Date) -> String {
+        historyTitleFormatter.string(from: date)
     }
 }

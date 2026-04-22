@@ -22,8 +22,7 @@ struct AIParseResult {
         merchant: String = "",
         note: String = "",
         paymentMethod: String = "",
-        rawText: String = ""
-    ) {
+        rawText: String = "") {
         self.amount = amount
         self.kind = kind
         self.categoryHint = categoryHint
@@ -45,7 +44,19 @@ enum AIParser {
         try! NSRegularExpression(pattern: #"Amount[:\s]+\$?(\d+(?:\.\d{1,2})?)"#, options: .caseInsensitive)
     ]
 
-    private static let incomeKeywords = ["工资", "到账", "收入", "报销", "转入", "salary", "income", "received", "refund", "退款", "奖金"]
+    private static let incomeKeywords = [
+        "工资",
+        "到账",
+        "收入",
+        "报销",
+        "转入",
+        "salary",
+        "income",
+        "received",
+        "refund",
+        "退款",
+        "奖金"
+    ]
     private static let paymentKeywords: [String: String] = [
         "微信": "微信", "wechat": "微信",
         "支付宝": "支付宝", "alipay": "支付宝",
@@ -54,7 +65,11 @@ enum AIParser {
         "现金": "现金", "cash": "现金"
     ]
     private static let categoryMap: [(keywords: [String], category: String)] = [
-        (["餐厅", "外卖", "美食", "早餐", "午餐", "晚餐", "奶茶", "咖啡", "food", "restaurant", "meal", "lunch", "dinner", "mcdonald", "kfc", "starbucks"], "餐饮"),
+        (
+            ["餐厅", "外卖", "美食", "早餐", "午餐", "晚餐", "奶茶", "咖啡", "food", "restaurant", "meal", "lunch", "dinner",
+             "mcdonald",
+             "kfc", "starbucks"],
+            "餐饮"),
         (["超市", "便利店", "购物", "淘宝", "京东", "天猫", "amazon", "mall", "shop"], "购物"),
         (["滴滴", "地铁", "公交", "打车", "高铁", "机票", "taxi", "uber", "grab", "mrt", "bus", "train", "flight"], "交通"),
         (["租金", "水电", "物业", "房", "rent", "utilities", "housing"], "住房"),
@@ -75,8 +90,7 @@ enum AIParser {
             let range = NSRange(text.startIndex..., in: text)
             if let match = pattern.firstMatch(in: text, range: range),
                let r = Range(match.range(at: 1), in: text),
-               let value = Double(text[r].replacingOccurrences(of: ",", with: ""))
-            {
+               let value = Double(text[r].replacingOccurrences(of: ",", with: "")) {
                 result.amount = value
                 break
             }
@@ -354,9 +368,9 @@ struct AIBillingView: View {
                                 .padding(.vertical, 10)
                                 .background(
                                     activeTab == tab
-                                        ? RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.ledgerAccent)
-                                        : RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.clear)
-                                )
+                                        ? RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .fill(Color.ledgerAccent)
+                                        : RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.clear))
                             }
                             .buttonStyle(.plain)
                         }
@@ -427,7 +441,8 @@ struct AIBillingView: View {
             // Result
             if let result = ocrVM.parseResult {
                 aiResultCard(result: result, onUse: {
-                    pendingDraft = makeDraft(from: result); showEntryEditor = true
+                    pendingDraft = makeDraft(from: result)
+                    showEntryEditor = true
                 }, onRetry: {
                     ocrVM.selectedImage = nil
                     ocrVM.parseResult = nil
@@ -497,8 +512,8 @@ struct AIBillingView: View {
         .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .strokeBorder(Color.ledgerAccent.opacity(0.3), style: StrokeStyle(lineWidth: 2, dash: [8, 5]))
-                .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(Color.ledgerAccentMuted.opacity(0.3)))
-        )
+                .background(RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(Color.ledgerAccentMuted.opacity(0.3))))
     }
 
     private func imagePreviewCard(_ image: UIImage) -> some View {
@@ -561,7 +576,8 @@ struct AIBillingView: View {
             }
             if let result = voiceVM.parseResult {
                 aiResultCard(result: result, onUse: {
-                    pendingDraft = makeDraft(from: result); showEntryEditor = true
+                    pendingDraft = makeDraft(from: result)
+                    showEntryEditor = true
                 }, onRetry: {
                     voiceVM.transcript = ""
                     voiceVM.parseResult = nil
@@ -585,8 +601,7 @@ struct AIBillingView: View {
                             .scaleEffect(voiceVM.isListening ? 1.1 : 0.9)
                             .animation(
                                 .easeInOut(duration: 1.0).repeatForever(autoreverses: true).delay(Double(i) * 0.2),
-                                value: voiceVM.isListening
-                            )
+                                value: voiceVM.isListening)
                     }
                 }
 
@@ -601,7 +616,11 @@ struct AIBillingView: View {
                         Circle()
                             .fill(voiceVM.isListening ? Color.ledgerExpense : Color.ledgerAccent)
                             .frame(width: 88, height: 88)
-                            .shadow(color: (voiceVM.isListening ? Color.ledgerExpense : Color.ledgerAccent).opacity(0.4), radius: 16, x: 0, y: 8)
+                            .shadow(
+                                color: (voiceVM.isListening ? Color.ledgerExpense : Color.ledgerAccent).opacity(0.4),
+                                radius: 16,
+                                x: 0,
+                                y: 8)
                         Image(systemName: voiceVM.isListening ? "stop.fill" : "mic.fill")
                             .font(.system(size: 34, weight: .medium))
                             .foregroundStyle(.white)
@@ -700,7 +719,8 @@ struct AIBillingView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private func aiResultCard(result: AIParseResult, onUse: @escaping () -> Void, onRetry: @escaping () -> Void) -> some View {
+    private func aiResultCard(result: AIParseResult, onUse: @escaping () -> Void,
+                              onRetry: @escaping () -> Void) -> some View {
         let category = AIParser.resolvedCategory(for: result, scheme: store.currentCategoryScheme)
 
         return VStack(alignment: .leading, spacing: 0) {
@@ -723,7 +743,11 @@ struct AIBillingView: View {
 
             // Fields
             VStack(spacing: 0) {
-                aiResultRow(label: "金额", value: result.amount.map { LedgerFormatters.currency($0) } ?? "未识别", accent: result.amount != nil ? (result.kind == .expense ? .ledgerExpense : .ledgerIncome) : .ledgerMuted)
+                aiResultRow(
+                    label: "金额",
+                    value: result.amount.map { LedgerFormatters.currency($0) } ?? "未识别",
+                    accent: result
+                        .amount != nil ? (result.kind == .expense ? .ledgerExpense : .ledgerIncome) : .ledgerMuted)
                 Divider().padding(.leading, 16)
                 aiResultRow(label: "类型", value: result.kind == .expense ? "支出" : "收入", accent: .ledgerText)
                 Divider().padding(.leading, 16)
@@ -752,8 +776,7 @@ struct AIBillingView: View {
                 .background(Color.ledgerAccent)
                 .clipShape(RoundedRectangle(cornerRadius: 0, style: .continuous))
                 .clipShape(
-                    .rect(bottomLeadingRadius: 22, bottomTrailingRadius: 22, style: .continuous)
-                )
+                    .rect(bottomLeadingRadius: 22, bottomTrailingRadius: 22, style: .continuous))
             }
             .buttonStyle(LedgerResponsiveButtonStyle())
         }
@@ -782,6 +805,7 @@ struct AIBillingView: View {
     private func makeDraft(from result: AIParseResult) -> QuickEntryDraft {
         var draft = store.makeDraft()
         draft.kind = result.kind
+        draft.titleText = result.merchant
         draft.amountText = result.amount.map { String(format: "%.2f", $0) } ?? ""
         draft.selectedCategory = AIParser.resolvedCategory(for: result, scheme: store.currentCategoryScheme)
         draft.paymentMethod = result.paymentMethod.isEmpty ? draft.paymentMethod : result.paymentMethod
@@ -832,16 +856,19 @@ struct ImagePickerRepresentable: UIViewControllerRepresentable {
 
     func updateUIViewController(_: UIImagePickerController, context _: Context) {}
 
-    func makeCoordinator() -> Coordinator { Coordinator(onSelect: onSelect) }
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onSelect: onSelect)
+    }
 
     class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
         let onSelect: (UIImage) -> Void
-        init(onSelect: @escaping (UIImage) -> Void) { self.onSelect = onSelect }
+        init(onSelect: @escaping (UIImage) -> Void) {
+            self.onSelect = onSelect
+        }
 
         func imagePickerController(
             _ picker: UIImagePickerController,
-            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
-        ) {
+            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
             if let image = info[.originalImage] as? UIImage {
                 onSelect(image)
             }

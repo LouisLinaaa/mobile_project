@@ -3,12 +3,13 @@ import SwiftUI
 struct AutoLedgerCenterView: View {
     @EnvironmentObject private var store: LedgerStore
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
 
     @StateObject private var viewModel = AutoLedgerViewModel()
     @State private var helperMessage: String?
     @State private var isBlueprintPresented = false
     @State private var isDebugExpanded = false
-    @State private var isAIBillingPresented = false
+    @State private var activeSheetScreen: ManagementScreen?
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -31,10 +32,19 @@ struct AutoLedgerCenterView: View {
             Text(helperMessage ?? "")
         }
         .task {
+            store.refreshAutoLedgerShortcutState()
             viewModel.refreshShortcutStatus()
             await viewModel.processPendingLaunchIfNeeded(store: store)
         }
         .onChange(of: store.autoLedgerPendingLaunch) { _, _ in
+            Task {
+                await viewModel.processPendingLaunchIfNeeded(store: store)
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            store.refreshAutoLedgerShortcutState()
+            viewModel.refreshShortcutStatus()
             Task {
                 await viewModel.processPendingLaunchIfNeeded(store: store)
             }
@@ -44,8 +54,8 @@ struct AutoLedgerCenterView: View {
                 onOpenEditor: openShortcutEditor,
                 onOpenShortcutsApp: openShortcutsApp)
         }
-        .sheet(isPresented: $isAIBillingPresented) {
-            AIBillingView()
+        .sheet(item: $activeSheetScreen) { screen in
+            ManagementSheetView(screen: screen)
                 .environmentObject(store)
         }
     }
@@ -53,7 +63,7 @@ struct AutoLedgerCenterView: View {
     // MARK: - AI Entry Card
 
     private var aiEntryCard: some View {
-        Button { isAIBillingPresented = true } label: {
+        Button { activeSheetScreen = .aiBilling } label: {
             HStack(spacing: 16) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
