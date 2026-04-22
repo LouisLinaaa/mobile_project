@@ -45,7 +45,7 @@ struct QuickAddSheet: View {
         .presentationDragIndicator(.visible)
         .presentationBackground(Color.ledgerCanvas)
         .onAppear {
-            draft = store.makeDraft()
+            draft = store.makeDraftWithAI()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                 isAmountFocused = true
             }
