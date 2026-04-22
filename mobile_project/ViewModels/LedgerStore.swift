@@ -507,7 +507,7 @@ final class LedgerStore: ObservableObject {
         case .currentBook:
             source = currentBookEntries
         case .allBooks:
-            source = entries.sorted { $0.date > $1.date }
+            source = entries
         }
 
         return source.sorted { lhs, rhs in
@@ -767,11 +767,14 @@ final class LedgerStore: ObservableObject {
         scope: LedgerHistoryScope = .currentBook,
         highlightedEntryIDs: [UUID] = [],
         prefersFocusedBatch: Bool = false,
+        filteredDate: Date? = nil,
         title: String? = nil) {
+        let normalizedDate = filteredDate.map { calendar.startOfDay(for: $0) }
         historyPresentation = LedgerHistoryPresentation(
             scope: scope,
             highlightedEntryIDs: highlightedEntryIDs,
             prefersFocusedBatch: prefersFocusedBatch,
+            filteredDate: normalizedDate,
             title: title)
         entryNavigationRequest = LedgerNavigationRequest(destination: .history(historyPresentation))
     }

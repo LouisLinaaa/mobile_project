@@ -149,20 +149,25 @@ struct HomeView: View {
                     ForEach(1...daysInCurrentMonth, id: \.self) { day in
                         let isToday = day == Calendar.current.component(.day, from: Date())
                         let hasRecord = store.monthRecordedDays.contains(day)
+                        Button {
+                            openHistoryForDay(day)
+                        } label: {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(hasRecord ? Color.ledgerAccentSoft : Color.ledgerCanvas)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .stroke(isToday ? Color.ledgerAccent : Color.clear, lineWidth: 2))
 
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(hasRecord ? Color.ledgerAccentSoft : Color.ledgerCanvas)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .stroke(isToday ? Color.ledgerAccent : Color.clear, lineWidth: 2))
-
-                            Text(isToday ? "今" : "\(day)")
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                .foregroundStyle(hasRecord || isToday ? Color.ledgerAccent : Color.ledgerMuted
-                                    .opacity(0.8))
+                                Text(isToday ? "今" : "\(day)")
+                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(hasRecord || isToday ? Color.ledgerAccent : Color.ledgerMuted
+                                        .opacity(0.8))
+                            }
+                            .frame(height: 46)
                         }
-                        .frame(height: 46)
+                        .buttonStyle(.plain)
+                        .disabled(!hasRecord)
                     }
                 }
 
@@ -730,17 +735,19 @@ struct HomeView: View {
         guard let request else { return }
 
         runAfterInteractiveTransition {
-            activeHomeTab = .ledger
-
             switch request.destination {
             case .detail(let entryID):
+                activeHomeTab = .ledger
                 activeScreen = nil
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
                     selectedEntry = store.entry(withID: entryID)
                     store.clearEntryNavigationRequest()
                 }
 
-            case .history:
+            case .history(let presentation):
+                if presentation.filteredDate == nil {
+                    activeHomeTab = .ledger
+                }
                 selectedEntry = nil
 
                 if activeScreen == nil {
@@ -757,6 +764,21 @@ struct HomeView: View {
                 store.clearEntryNavigationRequest()
             }
         }
+    }
+
+    private func openHistoryForDay(_ day: Int) {
+        var components = Calendar.current.dateComponents([.year, .month], from: Date())
+        components.day = day
+
+        guard let date = Calendar.current.date(from: components)
+        else {
+            return
+        }
+
+        store.presentHistory(
+            scope: .currentBook,
+            filteredDate: date,
+            title: LedgerFormatters.historyTitle(for: date))
     }
 }
 

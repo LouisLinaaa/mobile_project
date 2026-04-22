@@ -9,7 +9,7 @@ struct AutoLedgerCenterView: View {
     @State private var helperMessage: String?
     @State private var isBlueprintPresented = false
     @State private var isDebugExpanded = false
-    @State private var isAIBillingPresented = false
+    @State private var activeSheetScreen: ManagementScreen?
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -54,8 +54,8 @@ struct AutoLedgerCenterView: View {
                 onOpenEditor: openShortcutEditor,
                 onOpenShortcutsApp: openShortcutsApp)
         }
-        .sheet(isPresented: $isAIBillingPresented) {
-            AIBillingView()
+        .sheet(item: $activeSheetScreen) { screen in
+            ManagementSheetView(screen: screen)
                 .environmentObject(store)
         }
     }
@@ -63,7 +63,7 @@ struct AutoLedgerCenterView: View {
     // MARK: - AI Entry Card
 
     private var aiEntryCard: some View {
-        Button { isAIBillingPresented = true } label: {
+        Button { activeSheetScreen = .aiBilling } label: {
             HStack(spacing: 16) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)

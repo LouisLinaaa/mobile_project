@@ -2112,6 +2112,13 @@ struct LedgerHistoryView: View {
     @State private var showsFocusedBatchOnly = false
     @State private var selectedEntry: LedgerEntry?
 
+    private static let sectionDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hans_CN")
+        formatter.dateFormat = "M月d日 EEEE"
+        return formatter
+    }()
+
     private var isSensitiveVisible: Bool {
         store.isBalanceVisible && !store.appSettings.hideSensitiveInfo
     }
@@ -2120,10 +2127,22 @@ struct LedgerHistoryView: View {
         Set(store.historyPresentation.highlightedEntryIDs)
     }
 
+    private var filteredDate: Date? {
+        store.historyPresentation.filteredDate
+    }
+
+    private var isDayFiltered: Bool {
+        filteredDate != nil
+    }
+
     private var visibleEntries: [LedgerEntry] {
         let source = store.entries(scope: scope)
-        guard showsFocusedBatchOnly, !highlightedIDs.isEmpty else { return source }
-        return source.filter { highlightedIDs.contains($0.id) }
+        let dateFiltered = source.filter { entry in
+            guard let filteredDate else { return true }
+            return Calendar.current.isDate(entry.date, inSameDayAs: filteredDate)
+        }
+        guard showsFocusedBatchOnly, !highlightedIDs.isEmpty else { return dateFiltered }
+        return dateFiltered.filter { highlightedIDs.contains($0.id) }
     }
 
     private var daySections: [LedgerHistoryDaySection] {
@@ -2145,7 +2164,7 @@ struct LedgerHistoryView: View {
             VStack(alignment: .leading, spacing: 18) {
                 historyHeader
 
-                if highlightedIDs.isEmpty == false {
+                if highlightedIDs.isEmpty == false, !isDayFiltered {
                     focusedBatchBanner
                 }
 
@@ -2153,7 +2172,7 @@ struct LedgerHistoryView: View {
                     EmptyFeatureState(
                         icon: "tray",
                         title: "还没有可显示的记录",
-                        detail: showsFocusedBatchOnly ? "这批记录已经被删除或当前过滤条件下为空。" : "先记一笔或导入一份 CSV，这里会按日期汇总。")
+                        detail: emptyStateDetail)
                         .padding(.top, 24)
                 } else {
                     VStack(spacing: 16) {
@@ -2194,25 +2213,29 @@ struct LedgerHistoryView: View {
             .padding(.bottom, 32)
         }
         .background(Color.ledgerCanvas.ignoresSafeArea())
-        .navigationTitle("全部记录")
+        .navigationTitle(historyTitle)
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $selectedEntry) { entry in
             LedgerEntryDetailSheet(store: store, entry: entry)
         }
         .onAppear {
             scope = store.historyPresentation.scope
-            showsFocusedBatchOnly = store.historyPresentation.prefersFocusedBatch && !highlightedIDs.isEmpty
+            showsFocusedBatchOnly = !isDayFiltered &&
+                store.historyPresentation.prefersFocusedBatch &&
+                !highlightedIDs.isEmpty
         }
     }
 
     private var historyHeader: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Picker("记录范围", selection: $scope) {
-                ForEach(LedgerHistoryScope.allCases) { item in
-                    Text(item.rawValue).tag(item)
+            if !isDayFiltered {
+                Picker("记录范围", selection: $scope) {
+                    ForEach(LedgerHistoryScope.allCases) { item in
+                        Text(item.rawValue).tag(item)
+                    }
                 }
+                .pickerStyle(.segmented)
             }
-            .pickerStyle(.segmented)
 
             HStack(spacing: 12) {
                 historyMetric(value: "\(visibleEntries.count)", title: showsFocusedBatchOnly ? "本次记录" : "当前结果")
@@ -2256,6 +2279,26 @@ struct LedgerHistoryView: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
+    private var historyTitle: String {
+        if let title = store.historyPresentation.title {
+            return title
+        }
+        if let filteredDate {
+            return LedgerFormatters.historyTitle(for: filteredDate)
+        }
+        return "全部记录"
+    }
+
+    private var emptyStateDetail: String {
+        if isDayFiltered {
+            return "这一天还没有记录，换个日期看看，或者先记一笔。"
+        }
+        if showsFocusedBatchOnly {
+            return "这批记录已经被删除或当前过滤条件下为空。"
+        }
+        return "先记一笔或导入一份 CSV，这里会按日期汇总。"
+    }
+
     private func historyMetric(value: String, title: String) -> some View {
         VStack(spacing: 6) {
             Text(value)
@@ -2283,10 +2326,7 @@ struct LedgerHistoryView: View {
             return "昨天"
         }
 
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_Hans_CN")
-        formatter.dateFormat = "M月d日 EEEE"
-        return formatter.string(from: date)
+        return Self.sectionDateFormatter.string(from: date)
     }
 }
 
@@ -2314,6 +2354,14 @@ private struct CSVParseResult {
 
 @MainActor
 private enum CSVService {
+    private static let dateParseFormats = ["yyyy-MM-dd HH:mm", "yyyy/MM/dd HH:mm", "yyyy-MM-dd", "yyyy/MM/dd"]
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hans_CN")
+        return formatter
+    }()
+    private static let isoDateFormatter = ISO8601DateFormatter()
+
     private enum Column: CaseIterable {
         case date
         case kind
@@ -2520,18 +2568,15 @@ private enum CSVService {
 
     private static func parseDate(_ rawValue: String) -> Date? {
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_Hans_CN")
 
-        for format in ["yyyy-MM-dd HH:mm", "yyyy/MM/dd HH:mm", "yyyy-MM-dd", "yyyy/MM/dd"] {
-            formatter.dateFormat = format
-            if let date = formatter.date(from: trimmed) {
+        for format in dateParseFormats {
+            dateFormatter.dateFormat = format
+            if let date = dateFormatter.date(from: trimmed) {
                 return date
             }
         }
 
-        let isoFormatter = ISO8601DateFormatter()
-        if let date = isoFormatter.date(from: trimmed) {
+        if let date = isoDateFormatter.date(from: trimmed) {
             return date
         }
 
@@ -2663,11 +2708,12 @@ struct CSVImportExportView: View {
     @State private var range: Range = .allTime
     @State private var exportFile: CSVFile?
     @State private var showExportShare = false
+    @State private var isPreparingExport = false
     @State private var isImporting = false
     @State private var importResult: CSVParseResult?
     @State private var showImportConfirm = false
     @State private var isProcessing = false
-    @State private var importSuccess = false
+    @State private var importSuccessMessage: String?
     @State private var errorMessage: String?
 
     private enum Tab: String, CaseIterable { case export = "导出"
@@ -2695,7 +2741,12 @@ struct CSVImportExportView: View {
         .navigationTitle("导入 / 导出")
         .fileExporter(isPresented: $showExportShare, document: exportFile,
                       contentType: .commaSeparatedText, defaultFilename: exportName) { r in
-            if case .failure = r { errorMessage = "导出失败，请重试" }
+            isPreparingExport = false
+            defer { exportFile = nil }
+            if case .failure(let error) = r,
+               (error as NSError).code != NSUserCancelledError {
+                errorMessage = "导出失败，请重试"
+            }
         }
         .fileImporter(isPresented: $isImporting,
                       allowedContentTypes: [.commaSeparatedText, .plainText],
@@ -2709,6 +2760,12 @@ struct CSVImportExportView: View {
         .alert("错误", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("好的") { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
+        .onChange(of: showExportShare) { _, isPresented in
+            if !isPresented, exportFile != nil {
+                isPreparingExport = false
+                exportFile = nil
+            }
+        }
     }
 
     // MARK: Tab bar
@@ -2775,17 +2832,17 @@ struct CSVImportExportView: View {
 
             // Export button
             Button {
-                exportFile = CSVFile(content: CSVService.exportCSV(entries: entries, store: store))
-                showExportShare = true
+                beginExport(entries: entries)
             } label: {
                 Label("导出 CSV 文件", systemImage: "square.and.arrow.up")
                     .font(.system(size: 17, weight: .bold, design: .rounded))
                     .foregroundStyle(.white).frame(maxWidth: .infinity).padding(.vertical, 16)
-                    .background(RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(entries.isEmpty ? Color.ledgerMuted : Color.ledgerAccent))
+                    .background(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(entries.isEmpty || isPreparingExport ? Color.ledgerMuted : Color.ledgerAccent))
             }
             .buttonStyle(LedgerResponsiveButtonStyle())
-            .disabled(entries.isEmpty)
+            .disabled(entries.isEmpty || isPreparingExport || showExportShare)
 
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "lightbulb.fill").foregroundStyle(Color.ledgerGold).font(.system(size: 14))
@@ -2831,8 +2888,8 @@ struct CSVImportExportView: View {
                 .frame(maxWidth: .infinity).padding(.vertical, 16).ledgerCard()
             }
 
-            if importSuccess {
-                Label("导入成功！数据已添加到账本", systemImage: "checkmark.circle.fill")
+            if let importSuccessMessage {
+                Label(importSuccessMessage, systemImage: "checkmark.circle.fill")
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.ledgerIncome)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(16)
@@ -2946,7 +3003,7 @@ struct CSVImportExportView: View {
             return
         }
         isProcessing = true
-        importSuccess = false
+        importSuccessMessage = nil
         Task {
             do {
                 let ok = url.startAccessingSecurityScopedResource()
@@ -2985,23 +3042,28 @@ struct CSVImportExportView: View {
         }
 
         importResult = nil
-        importSuccess = !createdEntries.isEmpty
+        guard !createdEntries.isEmpty else { return }
 
-        if createdEntries.count == 1, let entry = createdEntries.first {
-            dismiss()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                store.presentEntryDetail(id: entry.id)
+        let importedBookCount = Set(createdEntries.map(\.bookID)).count
+        if createdEntries.count == 1 {
+            importSuccessMessage = "导入成功！1 条记录已添加到账本"
+        } else if importedBookCount > 1 {
+            importSuccessMessage = "导入成功！\(createdEntries.count) 条记录已添加到 \(importedBookCount) 个账本"
+        } else {
+            importSuccessMessage = "导入成功！\(createdEntries.count) 条记录已添加到账本"
+        }
+    }
+
+    private func beginExport(entries: [LedgerEntry]) {
+        guard !entries.isEmpty, !isPreparingExport, !showExportShare else { return }
+        isPreparingExport = true
+        exportFile = CSVFile(content: CSVService.exportCSV(entries: entries, store: store))
+        DispatchQueue.main.async {
+            guard exportFile != nil else {
+                isPreparingExport = false
+                return
             }
-        } else if !createdEntries.isEmpty {
-            let scope: LedgerHistoryScope = Set(createdEntries.map(\.bookID)).count > 1 ? .allBooks : .currentBook
-            dismiss()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                store.presentHistory(
-                    scope: scope,
-                    highlightedEntryIDs: createdEntries.map(\.id),
-                    prefersFocusedBatch: true,
-                    title: "本次导入")
-            }
+            showExportShare = true
         }
     }
 }
@@ -3471,7 +3533,6 @@ final class VoiceRecognitionViewModel: ObservableObject {
 
 struct AIBillingView: View {
     @EnvironmentObject private var store: LedgerStore
-    @Environment(\.dismiss) private var dismiss
 
     @State private var activeTab: AITab = .screenshot
     @StateObject private var ocrVM = ScreenshotOCRViewModel()
@@ -3485,79 +3546,70 @@ struct AIBillingView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 20) {
-                    // Hero pill tabs
-                    HStack(spacing: 0) {
-                        ForEach(AITab.allCases, id: \.self) { tab in
-                            Button {
-                                withAnimation(.spring(response: 0.26, dampingFraction: 0.84)) {
-                                    activeTab = tab
-                                }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: tab == .screenshot ? "camera.viewfinder" : "waveform.circle.fill")
-                                        .font(.system(size: 14, weight: .semibold))
-                                    Text(tab.rawValue)
-                                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                }
-                                .foregroundStyle(activeTab == tab ? .white : Color.ledgerMuted)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(
-                                    activeTab == tab
-                                        ? RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .fill(Color.ledgerAccent)
-                                        : RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.clear))
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 20) {
+                // Hero pill tabs
+                HStack(spacing: 0) {
+                    ForEach(AITab.allCases, id: \.self) { tab in
+                        Button {
+                            withAnimation(.spring(response: 0.26, dampingFraction: 0.84)) {
+                                activeTab = tab
                             }
-                            .buttonStyle(.plain)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: tab == .screenshot ? "camera.viewfinder" : "waveform.circle.fill")
+                                    .font(.system(size: 14, weight: .semibold))
+                                Text(tab.rawValue)
+                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            }
+                            .foregroundStyle(activeTab == tab ? .white : Color.ledgerMuted)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(
+                                activeTab == tab
+                                    ? RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(Color.ledgerAccent)
+                                    : RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.clear))
                         }
                     }
-                    .padding(4)
-                    .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.ledgerAccentMuted))
-                    .padding(.top, 4)
+                }
+                .padding(4)
+                .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.ledgerAccentMuted))
+                .padding(.top, 4)
 
-                    if activeTab == .screenshot {
-                        screenshotTab
-                    } else {
-                        voiceTab
-                    }
+                if activeTab == .screenshot {
+                    screenshotTab
+                } else {
+                    voiceTab
+                }
 
-                    // Success banner — shown after saving
-                    if savedEntry {
-                        HStack(spacing: 12) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 24))
-                                .foregroundStyle(Color.ledgerIncome)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("已记账！")
-                                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                                    .foregroundStyle(Color.ledgerText)
-                                Text("\(lastSavedAmount) 已添加到账本")
-                                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                                    .foregroundStyle(Color.ledgerMuted)
-                            }
-                            Spacer()
+                if savedEntry {
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundStyle(Color.ledgerIncome)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("已记账！")
+                                .font(.system(size: 16, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color.ledgerText)
+                            Text("\(lastSavedAmount) 已添加到账本")
+                                .font(.system(size: 13, weight: .medium, design: .rounded))
+                                .foregroundStyle(Color.ledgerMuted)
                         }
-                        .padding(16)
-                        .background(Color.ledgerIncome.opacity(0.10))
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        Spacer()
                     }
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 40)
-            }
-            .background(Color.ledgerCanvas.ignoresSafeArea())
-            .navigationTitle("AI 智能记账")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    LedgerToolbarBackButton { dismiss() }
+                    .padding(16)
+                    .background(Color.ledgerIncome.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 40)
         }
+        .background(Color.ledgerCanvas.ignoresSafeArea())
+        .navigationTitle("AI 智能记账")
+        .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $ocrVM.showImagePicker) {
             ImagePickerRepresentable(sourceType: .photoLibrary) { image in
                 ocrVM.recognizeImage(image, scheme: store.currentCategoryScheme)

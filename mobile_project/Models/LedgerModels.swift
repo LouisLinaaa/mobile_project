@@ -407,6 +407,7 @@ struct LedgerHistoryPresentation: Equatable {
     var scope: LedgerHistoryScope = .currentBook
     var highlightedEntryIDs: [UUID] = []
     var prefersFocusedBatch = false
+    var filteredDate: Date?
     var title: String?
 }
 

@@ -1254,16 +1254,6 @@ final class AutoLedgerViewModel: ObservableObject {
             successMessage = savedSummary
         }
 
-        if createdEntries.count == 1, let createdEntry = createdEntries.first {
-            store.presentEntryDetail(id: createdEntry.id)
-        } else if createdEntries.count > 1 {
-            store.presentHistory(
-                scope: .currentBook,
-                highlightedEntryIDs: createdEntries.map(\.id),
-                prefersFocusedBatch: true,
-                title: "本次自动入账")
-        }
-
         flowState = .saved
         errorMessage = nil
         store.appSettings.hasAcknowledgedShortcutInstall = true
