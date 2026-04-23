@@ -889,6 +889,26 @@ final class LedgerStore: ObservableObject {
         }
     }
 
+    func updateUserDisplayName(_ name: String) {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        updateSettings { settings in
+            settings.userProfile.displayName = trimmedName.isEmpty ? "我的账本" : String(trimmedName.prefix(20))
+        }
+    }
+
+    func updateUserGender(_ gender: String) {
+        let trimmedGender = gender.trimmingCharacters(in: .whitespacesAndNewlines)
+        updateSettings { settings in
+            settings.userProfile.gender = String(trimmedGender.prefix(12))
+        }
+    }
+
+    func updateUserAvatar(data: Data?) {
+        updateSettings { settings in
+            settings.userProfile.avatarData = data
+        }
+    }
+
     func setPushEnabled(_ enabled: Bool) {
         updateSettings { settings in
             settings.pushEnabled = enabled

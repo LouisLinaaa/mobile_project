@@ -1,10 +1,11 @@
 import AVFoundation
 import Charts
 import Combine
+import PhotosUI
 import Speech
 import SwiftUI
 import UniformTypeIdentifiers
-import Vision
+@preconcurrency import Vision
 
 enum ManagementScreen: String, Identifiable {
     case history
@@ -17,6 +18,7 @@ enum ManagementScreen: String, Identifiable {
     case csvImportExport
     case aiBilling
     case widgets
+    case profile
     case settings
     case backup
     case privacy
@@ -66,6 +68,8 @@ struct ManagementSheetView: View {
             AIBillingView()
         case .widgets:
             WidgetCenterView()
+        case .profile:
+            ProfileSettingsView()
         case .settings:
             SettingsView()
         case .backup:
@@ -1391,6 +1395,400 @@ private enum SettingsLayout {
     static let titleFontSize: CGFloat = 18
     static let valueFontSize: CGFloat = 16
     static let subtitleFontSize: CGFloat = 13
+}
+
+private enum ProfileEditorField: Identifiable {
+    case nickname
+
+    var id: String {
+        switch self {
+        case .nickname:
+            "nickname"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .nickname:
+            "昵称"
+        }
+    }
+
+    var placeholder: String {
+        switch self {
+        case .nickname:
+            "输入昵称"
+        }
+    }
+}
+
+private struct NoHighlightButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+    }
+}
+
+struct ProfileSettingsView: View {
+    @EnvironmentObject private var store: LedgerStore
+
+    @State private var selectedAvatarItem: PhotosPickerItem?
+    @State private var activeEditor: ProfileEditorField?
+    @State private var isGenderSheetPresented = false
+    @State private var genderDraft = ""
+    @State private var avatarLoadTask: Task<Void, Never>?
+    @State private var avatarSelectionToken = UUID()
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 24) {
+                profileHero
+                profileDetailsCard
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 18)
+            .padding(.bottom, 32)
+        }
+        .background(
+            LinearGradient(
+                colors: [Color(red: 0.93, green: 0.96, blue: 1.0), Color.ledgerCanvas],
+                startPoint: .top,
+                endPoint: .bottom)
+                .ignoresSafeArea())
+        .navigationTitle("关于你")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $activeEditor) { field in
+            ProfileTextEditSheet(field: field)
+                .environmentObject(store)
+        }
+        .sheet(isPresented: $isGenderSheetPresented) {
+            ProfileGenderSheet(selection: $genderDraft) {
+                store.updateUserGender(genderDraft)
+                isGenderSheetPresented = false
+            } onCancel: {
+                genderDraft = store.appSettings.userProfile.gender
+                isGenderSheetPresented = false
+            }
+        }
+        .onChange(of: selectedAvatarItem) { _, item in
+            guard let item else { return }
+            avatarLoadTask?.cancel()
+            let selectionToken = UUID()
+            avatarSelectionToken = selectionToken
+            avatarLoadTask = Task {
+                if let data = try? await item.loadTransferable(type: Data.self) {
+                    guard !Task.isCancelled else { return }
+                    let normalizedData = await Task.detached(priority: .userInitiated) {
+                        normalizedAvatarData(from: data)
+                    }.value
+                    guard !Task.isCancelled else { return }
+                    await MainActor.run {
+                        guard avatarSelectionToken == selectionToken else { return }
+                        store.updateUserAvatar(data: normalizedData)
+                    }
+                }
+            }
+        }
+        .onAppear {
+            genderDraft = store.appSettings.userProfile.gender
+        }
+        .onDisappear {
+            avatarLoadTask?.cancel()
+        }
+    }
+
+    private var profileHero: some View {
+        VStack(spacing: 16) {
+            ZStack(alignment: .bottomTrailing) {
+                DrawerAvatarView(imageData: store.appSettings.userProfile.avatarData, size: 132)
+
+                PhotosPicker(selection: $selectedAvatarItem, matching: .images) {
+                    ZStack {
+                        Circle()
+                            .fill(.white)
+                            .frame(width: 44, height: 44)
+                            .shadow(color: Color.black.opacity(0.08), radius: 10, x: 0, y: 4)
+
+                        Image(systemName: "camera")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(Color.ledgerMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+                .offset(x: -6, y: -4)
+            }
+
+            Text(store.appSettings.userProfile.displayName)
+                .font(.system(size: 30, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 8)
+    }
+
+    private var profileDetailsCard: some View {
+        VStack(spacing: 0) {
+            profileFieldRow(
+                title: "昵称",
+                value: store.appSettings.userProfile.displayName,
+                action: { activeEditor = .nickname })
+
+            Divider().padding(.leading, SettingsLayout.dividerLeading)
+
+            profileFieldRow(
+                title: "性别",
+                value: store.appSettings.userProfile.gender.isEmpty ? "未填写" : store.appSettings.userProfile.gender,
+                isPlaceholder: store.appSettings.userProfile.gender.isEmpty,
+                action: {
+                    genderDraft =
+                        store.appSettings.userProfile.gender.isEmpty ? "保密" : store.appSettings.userProfile.gender
+                    isGenderSheetPresented = true
+                })
+
+            Divider().padding(.leading, SettingsLayout.dividerLeading)
+
+            profileInfoRow(title: "ID", value: store.appSettings.userProfile.userID)
+
+            Divider().padding(.leading, SettingsLayout.dividerLeading)
+
+            profileInfoRow(title: "版本号", value: appVersionText)
+        }
+        .ledgerCard()
+    }
+
+    private func profileFieldRow(
+        title: String,
+        value: String,
+        isPlaceholder: Bool = false,
+        action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Text(title)
+                    .font(.system(size: 18, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.ledgerText)
+
+                Spacer()
+
+                Text(value)
+                    .font(.system(size: 17, weight: .medium, design: .rounded))
+                    .foregroundStyle(isPlaceholder ? Color.ledgerMuted.opacity(0.8) : Color.ledgerMuted)
+                    .lineLimit(1)
+
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(Color.ledgerMuted.opacity(0.72))
+            }
+            .padding(.horizontal, SettingsLayout.rowHorizontalPadding)
+            .padding(.vertical, 22)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(NoHighlightButtonStyle())
+    }
+
+    private func profileInfoRow(title: String, value: String) -> some View {
+        HStack(spacing: 14) {
+            Text(title)
+                .font(.system(size: 18, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+
+            Spacer()
+
+            Text(value)
+                .font(.system(size: 17, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.ledgerMuted)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, SettingsLayout.rowHorizontalPadding)
+        .padding(.vertical, 22)
+    }
+
+    private var appVersionText: String {
+        let shortVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        let buildVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        return shortVersion == buildVersion ? shortVersion : "\(shortVersion).\(buildVersion)"
+    }
+}
+
+private struct ProfileTextEditSheet: View {
+    @EnvironmentObject private var store: LedgerStore
+    @Environment(\.dismiss) private var dismiss
+
+    let field: ProfileEditorField
+
+    @State private var text = ""
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Capsule()
+                .fill(Color.ledgerMuted.opacity(0.18))
+                .frame(width: 48, height: 6)
+                .padding(.top, 10)
+                .padding(.bottom, 26)
+
+            Text("修改昵称")
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+                .padding(.bottom, 28)
+
+            HStack(spacing: 12) {
+                TextField(field.placeholder, text: $text)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.ledgerText)
+
+                if !text.isEmpty {
+                    Button {
+                        text = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(Color.ledgerMuted.opacity(0.7))
+                    }
+                    .buttonStyle(NoHighlightButtonStyle())
+                }
+            }
+            .padding(.horizontal, 18)
+            .frame(height: 72)
+            .background(Color.black.opacity(0.035))
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+
+            Button("保存") {
+                save()
+            }
+            .font(.system(size: 20, weight: .bold, design: .rounded))
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 18)
+            .background(Color.ledgerAccent)
+            .clipShape(Capsule())
+            .padding(.top, 28)
+            .padding(.bottom, 8)
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 24)
+        .background(Color.white)
+        .presentationDetents([.height(280)])
+        .presentationDragIndicator(.hidden)
+        .onAppear {
+            text = store.appSettings.userProfile.displayName
+        }
+    }
+
+    private func save() {
+        store.updateUserDisplayName(text)
+        dismiss()
+    }
+}
+
+private struct ProfileGenderSheet: View {
+    @Binding var selection: String
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    private let options = ["女", "男", "保密"]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Capsule()
+                .fill(Color.ledgerMuted.opacity(0.18))
+                .frame(width: 48, height: 6)
+                .padding(.top, 10)
+                .padding(.bottom, 24)
+
+            Text("选择性别")
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+                .padding(.bottom, 22)
+
+            Divider()
+                .padding(.bottom, 22)
+
+            VStack(spacing: 12) {
+                ForEach(options, id: \.self) { option in
+                    Button {
+                        selection = option
+                    } label: {
+                        Text(option)
+                            .font(.system(size: 22, weight: .medium, design: .rounded))
+                            .foregroundStyle(selection == option ? Color.ledgerText : Color.ledgerMuted.opacity(0.7))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 18)
+                            .background(
+                                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                    .fill(selection == option ? Color.black.opacity(0.04) : Color.clear))
+                    }
+                    .buttonStyle(NoHighlightButtonStyle())
+                }
+            }
+
+            HStack(spacing: 14) {
+                Button("取消") {
+                    onCancel()
+                }
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ledgerMuted.opacity(0.65))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+                .background(Color.black.opacity(0.06))
+                .clipShape(Capsule())
+
+                Button("确认") {
+                    onConfirm()
+                }
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+                .background(Color.ledgerAccent)
+                .clipShape(Capsule())
+            }
+            .padding(.top, 28)
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 24)
+        .background(Color.white)
+        .presentationDetents([.height(430)])
+        .presentationDragIndicator(.hidden)
+    }
+}
+
+private func normalizedAvatarData(from data: Data) -> Data {
+    guard let image = UIImage(data: data) else { return data }
+
+    let maxDimension: CGFloat = 512
+    let originalSize = image.size
+    let longestEdge = max(originalSize.width, originalSize.height)
+    let scale = min(1, maxDimension / max(longestEdge, 1))
+    let targetSize = CGSize(
+        width: max(1, floor(originalSize.width * scale)),
+        height: max(1, floor(originalSize.height * scale)))
+
+    let renderedImage: UIImage
+    if scale < 1 {
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        renderedImage = UIGraphicsImageRenderer(size: targetSize, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+    } else {
+        renderedImage = image
+    }
+
+    let compressionQualities: [CGFloat] = [0.82, 0.68, 0.52]
+    let maxByteCount = 350_000
+    var fallbackData = data
+
+    for quality in compressionQualities {
+        if let jpegData = renderedImage.jpegData(compressionQuality: quality) {
+            fallbackData = jpegData
+            if jpegData.count <= maxByteCount {
+                return jpegData
+            }
+        }
+    }
+
+    return fallbackData
 }
 
 struct SettingsView: View {
@@ -3342,74 +3740,75 @@ final class ScreenshotOCRViewModel: ObservableObject {
             return
         }
 
-        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        let request = VNRecognizeTextRequest { [weak self] request, error in
-            guard let self else { return }
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            let request = VNRecognizeTextRequest { request, error in
+                guard let self else { return }
 
-            if let error {
-                Task { @MainActor in
-                    self.errorMessage = "识别失败：\(error.localizedDescription)"
-                    self.isProcessing = false
+                if let error {
+                    Task { @MainActor in
+                        self.errorMessage = "识别失败：\(error.localizedDescription)"
+                        self.isProcessing = false
+                    }
+                    return
                 }
-                return
-            }
 
-            guard let observations = request.results as? [VNRecognizedTextObservation] else {
-                Task { @MainActor in
-                    self.errorMessage = "未识别到文字"
-                    self.isProcessing = false
+                guard let observations = request.results as? [VNRecognizedTextObservation] else {
+                    Task { @MainActor in
+                        self.errorMessage = "未识别到文字"
+                        self.isProcessing = false
+                    }
+                    return
                 }
-                return
-            }
 
-            let allText = observations.compactMap { $0.topCandidates(1).first }
-            let fullText = allText.map(\.string).joined(separator: "\n")
-            let avgConfidence = allText.isEmpty ? 0 : allText.reduce(0) { $0 + $1.confidence } / Float(allText.count)
+                let allText = observations.compactMap { $0.topCandidates(1).first }
+                let fullText = allText.map(\.string).joined(separator: "\n")
+                let avgConfidence =
+                    allText.isEmpty ? 0 : allText.reduce(0) { $0 + $1.confidence } / Float(allText.count)
 
-            // Build row-aware pairs: group observations by Y position so that
-            // left-side labels (e.g. "备注") are matched with right-side values
-            // (e.g. "打车 回家") that sit on the same horizontal row.
-            var rowPairs: [(label: String, value: String)] = []
-            // Each observation has a boundingBox in normalised coords (0-1, origin bottom-left)
-            let obs = observations.compactMap { o -> (text: String, midY: CGFloat, minX: CGFloat)? in
-                guard let top = o.topCandidates(1).first else { return nil }
-                let box = o.boundingBox
-                return (top.string, box.midY, box.minX)
-            }
-            // Group by midY within a tolerance of 0.03 (≈ one text line height)
-            let tolerance: CGFloat = 0.03
-            var used = [Bool](repeating: false, count: obs.count)
-            for i in 0..<obs.count {
-                guard !used[i] else { continue }
-                var group = [obs[i]]
-                used[i] = true
-                for j in (i + 1)..<obs.count {
-                    if !used[j], abs(obs[j].midY - obs[i].midY) < tolerance {
-                        group.append(obs[j])
-                        used[j] = true
+                // Build row-aware pairs: group observations by Y position so that
+                // left-side labels (e.g. "备注") are matched with right-side values
+                // (e.g. "打车 回家") that sit on the same horizontal row.
+                var rowPairs: [(label: String, value: String)] = []
+                // Each observation has a boundingBox in normalised coords (0-1, origin bottom-left)
+                let obs = observations.compactMap { o -> (text: String, midY: CGFloat, minX: CGFloat)? in
+                    guard let top = o.topCandidates(1).first else { return nil }
+                    let box = o.boundingBox
+                    return (top.string, box.midY, box.minX)
+                }
+                // Group by midY within a tolerance of 0.03 (≈ one text line height)
+                let tolerance: CGFloat = 0.03
+                var used = [Bool](repeating: false, count: obs.count)
+                for i in 0..<obs.count {
+                    guard !used[i] else { continue }
+                    var group = [obs[i]]
+                    used[i] = true
+                    for j in (i + 1)..<obs.count {
+                        if !used[j], abs(obs[j].midY - obs[i].midY) < tolerance {
+                            group.append(obs[j])
+                            used[j] = true
+                        }
+                    }
+                    // Sort left→right by minX
+                    group.sort { $0.minX < $1.minX }
+                    if group.count >= 2 {
+                        // Left-most = label, right-most = value
+                        rowPairs.append((label: group.first!.text, value: group.last!.text))
                     }
                 }
-                // Sort left→right by minX
-                group.sort { $0.minX < $1.minX }
-                if group.count >= 2 {
-                    // Left-most = label, right-most = value
-                    rowPairs.append((label: group.first!.text, value: group.last!.text))
+
+                Task { @MainActor in
+                    self.recognizedText = fullText
+                    self.confidence = avgConfidence
+                    self.parseResult = AIParser.parseTextAndPairs(fullText, rowPairs: rowPairs, scheme: scheme)
+                    self.isProcessing = false
                 }
             }
 
-            Task { @MainActor in
-                self.recognizedText = fullText
-                self.confidence = avgConfidence
-                self.parseResult = AIParser.parseTextAndPairs(fullText, rowPairs: rowPairs, scheme: scheme)
-                self.isProcessing = false
-            }
-        }
+            request.recognitionLevel = .accurate
+            request.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US"]
+            request.usesLanguageCorrection = true
 
-        request.recognitionLevel = .accurate
-        request.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US"]
-        request.usesLanguageCorrection = true
-
-        DispatchQueue.global(qos: .userInitiated).async {
             try? handler.perform([request])
         }
     }

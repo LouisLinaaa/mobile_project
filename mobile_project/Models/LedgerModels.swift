@@ -462,7 +462,54 @@ enum AssistantReplyStyle: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+struct LedgerUserProfile: Codable, Equatable {
+    var displayName: String
+    var gender: String
+    var userID: String
+    var avatarData: Data?
+
+    init(
+        displayName: String = "我的账本",
+        gender: String = "",
+        userID: String = LedgerUserProfile.generateUniqueUserID(),
+        avatarData: Data? = nil) {
+        self.displayName = displayName
+        self.gender = gender
+        self.userID = userID
+        self.avatarData = avatarData
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case displayName
+        case gender
+        case userID
+        case avatarData
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nonEmpty ?? "我的账本"
+        gender = try container.decodeIfPresent(String.self, forKey: .gender)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        userID = try container.decodeIfPresent(String.self, forKey: .userID)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nonEmpty ?? LedgerUserProfile.generateUniqueUserID()
+        avatarData = try container.decodeIfPresent(Data.self, forKey: .avatarData)
+    }
+
+    static func generateUniqueUserID() -> String {
+        let timestamp = Int(Date().timeIntervalSince1970).base36Uppercased
+        let randomSeed = String((0..<4).map { _ in
+            "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".randomElement() ?? "X"
+        })
+        return "MN\(timestamp.suffix(6))\(randomSeed)"
+    }
+}
+
 struct AppSettings: Codable, Equatable {
+    var userProfile = LedgerUserProfile()
     var monthStartDay: Int = 1
     var assistantReplyStyle: AssistantReplyStyle = .balanced
     var showRecordImages = true
@@ -486,6 +533,7 @@ struct AppSettings: Codable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
+        case userProfile
         case monthStartDay
         case assistantReplyStyle
         case showRecordImages
@@ -505,6 +553,7 @@ struct AppSettings: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        userProfile = try container.decodeIfPresent(LedgerUserProfile.self, forKey: .userProfile) ?? LedgerUserProfile()
         let decodedMonthStartDay = try container.decodeIfPresent(Int.self, forKey: .monthStartDay) ?? 1
         monthStartDay = min(max(decodedMonthStartDay, 1), 28)
         assistantReplyStyle = try container
@@ -527,6 +576,18 @@ struct AppSettings: Codable, Equatable {
             .decodeIfPresent(AutoLedgerPreferredTriggerMode.self, forKey: .preferredTriggerMode) ?? .assistiveTouch
         lastShortcutEducationState = try container
             .decodeIfPresent(AutoLedgerShortcutEducationState.self, forKey: .lastShortcutEducationState) ?? .install
+    }
+}
+
+private extension String {
+    var nonEmpty: String? {
+        isEmpty ? nil : self
+    }
+}
+
+private extension Int {
+    var base36Uppercased: String {
+        String(self, radix: 36, uppercase: true)
     }
 }
 
