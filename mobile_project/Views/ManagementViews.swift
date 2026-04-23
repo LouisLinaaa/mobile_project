@@ -85,6 +85,8 @@ private enum StatisticsRange: String, CaseIterable, Identifiable {
     case month = "统计月"
 
     var id: String { rawValue }
+
+    var localizedTitle: String { rawValue.localized }
 }
 
 private struct TrendPoint: Identifiable {
@@ -218,7 +220,7 @@ struct StatisticsView: View {
         HStack(spacing: 12) {
             Picker("范围", selection: $range) {
                 ForEach(StatisticsRange.allCases) { item in
-                    Text(item.rawValue).tag(item)
+                    Text(item.localizedTitle).tag(item)
                 }
             }
             .pickerStyle(.segmented)
@@ -282,7 +284,7 @@ struct StatisticsView: View {
 
                 Picker("类型", selection: $selectedKind) {
                     ForEach(LedgerKind.allCases) { kind in
-                        Text(kind.rawValue).tag(kind)
+                        Text(kind.localizedTitle).tag(kind)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -338,7 +340,7 @@ struct StatisticsView: View {
                     ForEach(categoryRanks.prefix(6)) { item in
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
-                                Label(item.category.name, systemImage: item.category.icon)
+                                Label(item.category.name.localized, systemImage: item.category.icon)
                                     .font(.system(size: 15, weight: .semibold, design: .rounded))
                                     .foregroundStyle(Color.ledgerText)
 
@@ -394,7 +396,8 @@ struct StatisticsView: View {
                                     .font(.system(size: 16, weight: .bold, design: .rounded))
                                     .foregroundStyle(Color.ledgerText)
 
-                                Text("\(entry.category.name) · \(LedgerFormatters.entryTime(for: entry.date))")
+                                Text(
+                                    "\(entry.category.name.localized) · \(LedgerFormatters.entryTime(for: entry.date))")
                                     .font(.system(size: 13, weight: .medium, design: .rounded))
                                     .foregroundStyle(Color.ledgerMuted)
                             }
@@ -541,7 +544,7 @@ struct AssetManagementView: View {
                             }
 
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(account.name)
+                                Text(account.name.localized)
                                     .font(.system(size: 16, weight: .bold, design: .rounded))
                                     .foregroundStyle(Color.ledgerText)
 
@@ -776,7 +779,7 @@ struct CategoryManagementView: View {
                                                     .foregroundStyle(category.tint)
                                             }
 
-                                        Text(category.name)
+                                        Text(category.name.localized)
                                             .font(.system(size: 12, weight: .medium, design: .rounded))
                                             .foregroundStyle(Color.ledgerMuted)
                                     }
@@ -860,7 +863,7 @@ private struct CategorySchemeDetailView: View {
 
                             Picker("类型", selection: $selectedKind) {
                                 ForEach(LedgerKind.allCases) { kind in
-                                    Text(kind.rawValue).tag(kind)
+                                    Text(kind.localizedTitle).tag(kind)
                                 }
                             }
                             .pickerStyle(.segmented)
@@ -878,7 +881,7 @@ private struct CategorySchemeDetailView: View {
                                                 .foregroundStyle(category.tint)
                                         }
 
-                                    Text(category.name)
+                                    Text(category.name.localized)
                                         .font(.system(size: 15, weight: .medium, design: .rounded))
                                         .foregroundStyle(Color.ledgerText)
                                         .multilineTextAlignment(.center)
@@ -1024,7 +1027,7 @@ private struct AccountEditorSheet: View {
                                                         .foregroundStyle(template.tintStyle.color)
                                                 }
 
-                                            Text(template.name)
+                                            Text(template.name.localized)
                                                 .font(.system(size: 14, weight: .medium, design: .rounded))
                                                 .foregroundStyle(Color.ledgerText)
                                         }
@@ -2629,7 +2632,7 @@ struct LedgerHistoryView: View {
             if !isDayFiltered {
                 Picker("记录范围", selection: $scope) {
                     ForEach(LedgerHistoryScope.allCases) { item in
-                        Text(item.rawValue).tag(item)
+                        Text(item.localizedTitle).tag(item)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -3172,7 +3175,7 @@ struct CSVImportExportView: View {
         HStack(spacing: 0) {
             ForEach(Tab.allCases, id: \.self) { t in
                 Button { withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) { activeTab = t } } label: {
-                    Text(t.rawValue)
+                    Text(t.rawValue.localized)
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .foregroundStyle(activeTab == t ? .white : Color.ledgerMuted)
                         .frame(maxWidth: .infinity).padding(.vertical, 10)
@@ -3958,7 +3961,7 @@ struct AIBillingView: View {
                             HStack(spacing: 6) {
                                 Image(systemName: tab == .screenshot ? "camera.viewfinder" : "waveform.circle.fill")
                                     .font(.system(size: 14, weight: .semibold))
-                                Text(tab.rawValue)
+                                Text(tab.rawValue.localized)
                                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                             }
                             .foregroundStyle(activeTab == tab ? .white : Color.ledgerMuted)
@@ -4351,9 +4354,9 @@ struct AIBillingView: View {
                     accent: result
                         .amount != nil ? (result.kind == .expense ? .ledgerExpense : .ledgerIncome) : .ledgerMuted)
                 Divider().padding(.leading, 16)
-                aiResultRow(label: "类型", value: result.kind == .expense ? "支出" : "收入", accent: .ledgerText)
+                aiResultRow(label: "类型", value: result.kind.localizedTitle, accent: .ledgerText)
                 Divider().padding(.leading, 16)
-                aiResultRow(label: "分类", value: category.name, accent: category.tint)
+                aiResultRow(label: "分类", value: category.name.localized, accent: category.tint)
                 if !result.paymentMethod.isEmpty {
                     Divider().padding(.leading, 16)
                     aiResultRow(label: "支付", value: result.paymentMethod, accent: .ledgerText)

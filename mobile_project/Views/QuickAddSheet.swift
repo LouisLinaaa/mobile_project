@@ -119,7 +119,7 @@ private struct LedgerEntryEditorForm: View {
 
             Picker("类型", selection: $draft.kind) {
                 ForEach(LedgerKind.allCases) { kind in
-                    Text(kind.rawValue).tag(kind)
+                    Text(kind.localizedTitle).tag(kind)
                 }
             }
             .pickerStyle(.segmented)
@@ -187,7 +187,7 @@ private struct LedgerEntryEditorForm: View {
                                     .foregroundStyle(category.tint)
                             }
 
-                            Text(category.name)
+                            Text(category.name.localized)
                                 .font(.system(size: 15, weight: .medium, design: .rounded))
                                 .foregroundStyle(Color.ledgerText)
                         }
@@ -217,13 +217,13 @@ private struct LedgerEntryEditorForm: View {
 
             Menu {
                 ForEach(store.paymentMethods, id: \.self) { method in
-                    Button(method) {
+                    Button(method.localized) {
                         draft.paymentMethod = method
                     }
                 }
             } label: {
                 HStack {
-                    Text(draft.paymentMethod)
+                    Text(draft.paymentMethod.localized)
                         .font(.system(size: 17, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.ledgerText)
                     Spacer()

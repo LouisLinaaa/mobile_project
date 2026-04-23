@@ -12,26 +12,26 @@ private enum WidgetTemplateKind: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .todayExpense:
-            return "快速查看今天花了多少钱"
+            return "快速查看今天花了多少钱".localized
         case .budgetProgress:
-            return "跟踪预算使用进度"
+            return "跟踪预算使用进度".localized
         case .quickAction:
-            return "一键进入常用功能"
+            return "一键进入常用功能".localized
         case .accountOverview:
-            return "掌握资产与负债变化"
+            return "掌握资产与负债变化".localized
         case .autoLedgerStatus:
-            return "查看自动识别处理状态"
+            return "查看自动识别处理状态".localized
         }
     }
 
     var supportedSizes: String {
         switch self {
         case .todayExpense, .budgetProgress, .accountOverview:
-            return "中/大号"
+            return "中/大号".localized
         case .quickAction:
-            return "小/中号"
+            return "小/中号".localized
         case .autoLedgerStatus:
-            return "小/中/大号"
+            return "小/中/大号".localized
         }
     }
 
@@ -143,7 +143,7 @@ struct WidgetCenterView: View {
     private func widgetCard(kind: WidgetTemplateKind) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label(kind.rawValue, systemImage: kind.icon)
+                Label(kind.rawValue.localized, systemImage: kind.icon)
                     .font(.system(size: 17, weight: .bold, design: .rounded))
                     .foregroundStyle(kind.accent)
                 Spacer()
@@ -193,7 +193,7 @@ struct WidgetCenterView: View {
                 ForEach(expenseEntries.prefix(3)) { entry in
                     HStack {
                         Circle().fill(entry.category.tint).frame(width: 6, height: 6)
-                        Text(entry.category.name)
+                        Text(entry.category.name.localized)
                             .font(.system(size: 14, weight: .medium, design: .rounded))
                             .foregroundStyle(Color.ledgerMuted)
                         Spacer()
@@ -260,7 +260,7 @@ struct WidgetCenterView: View {
     private func quickPill(_ title: String, icon: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-            Text(title)
+            Text(title.localized)
         }
         .font(.system(size: 13, weight: .bold, design: .rounded))
         .foregroundStyle(Color.ledgerText)
@@ -285,7 +285,7 @@ struct WidgetCenterView: View {
 
     private func metricPill(title: String, value: Double, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title)
+            Text(title.localized)
                 .font(.system(size: 13, weight: .medium, design: .rounded))
                 .foregroundStyle(Color.ledgerMuted)
             Text(LedgerFormatters.currency(value))
@@ -317,7 +317,7 @@ struct WidgetCenterView: View {
     }
 
     private func statusChip(_ title: String, color: Color) -> some View {
-        Text(title)
+        Text(title.localized)
             .font(.system(size: 12, weight: .bold, design: .rounded))
             .foregroundStyle(color)
             .padding(.horizontal, 10)
@@ -348,7 +348,7 @@ struct WidgetCenterView: View {
                             }
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(kind.rawValue)
+                            Text(kind.rawValue.localized)
                                 .font(.system(size: 16, weight: .bold, design: .rounded))
                                 .foregroundStyle(Color.ledgerText)
                             Text(kind.subtitle)
@@ -423,10 +423,10 @@ struct WidgetCenterView: View {
             Image(systemName: icon)
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(Color.ledgerAccent)
-            Text(title)
+            Text(title.localized)
                 .font(.system(size: 16, weight: .bold, design: .rounded))
                 .foregroundStyle(Color.ledgerText)
-            Text(subtitle)
+            Text(subtitle.localized)
                 .font(.system(size: 13, weight: .medium, design: .rounded))
                 .foregroundStyle(Color.ledgerMuted)
         }
@@ -461,7 +461,7 @@ struct WidgetCenterView: View {
                 .background(Color.ledgerAccent)
                 .clipShape(Capsule())
 
-            Text(text)
+            Text(text.localized)
                 .font(.system(size: 16, weight: .medium, design: .rounded))
                 .foregroundStyle(Color.ledgerText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -484,11 +484,11 @@ struct WidgetCenterView: View {
 
     private func faqItem(question: String, answer: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(question)
+            Text(question.localized)
                 .font(.system(size: 16, weight: .bold, design: .rounded))
                 .foregroundStyle(Color.ledgerText)
 
-            Text(answer)
+            Text(answer.localized)
                 .font(.system(size: 14, weight: .medium, design: .rounded))
                 .foregroundStyle(Color.ledgerMuted)
                 .fixedSize(horizontal: false, vertical: true)

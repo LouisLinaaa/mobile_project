@@ -11,15 +11,15 @@ enum AutoLedgerShortcutSource: String, Codable, Equatable, Sendable {
     var displayName: String {
         switch self {
         case .shortcutsApp:
-            "快捷指令"
+            "快捷指令".localized
         case .assistiveTouch:
-            "辅助触控"
+            "辅助触控（小白点）".localized
         case .actionButton:
-            "操作按钮"
+            "操作按钮".localized
         case .shareSheet:
-            "分享扩展"
+            "分享扩展".localized
         case .inAppDemo:
-            "App 内演示"
+            "App 内演示".localized
         }
     }
 }
@@ -31,15 +31,15 @@ enum AutoLedgerShortcutSourceIntentValue: String, AppEnum {
     case shareSheet
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation {
-        "触发来源"
+        TypeDisplayRepresentation(name: LocalizedStringResource("触发来源"))
     }
 
     static var caseDisplayRepresentations: [Self: DisplayRepresentation] {
         [
-            .shortcutsApp: "快捷指令",
-            .assistiveTouch: "辅助触控",
-            .actionButton: "操作按钮",
-            .shareSheet: "分享扩展"
+            .shortcutsApp: DisplayRepresentation(title: LocalizedStringResource("快捷指令")),
+            .assistiveTouch: DisplayRepresentation(title: LocalizedStringResource("辅助触控（小白点）")),
+            .actionButton: DisplayRepresentation(title: LocalizedStringResource("操作按钮")),
+            .shareSheet: DisplayRepresentation(title: LocalizedStringResource("分享扩展"))
         ]
     }
 
@@ -332,7 +332,13 @@ private enum AutoLedgerDirectRunner {
 
         let categories = LedgerKind.allCases.flatMap { kind -> [String] in
             let source = kind == .expense ? selectedScheme.expenseCategories : selectedScheme.incomeCategories
-            return source.map { "\(kind.rawValue):\($0.name)" }
+            return source.flatMap { category in
+                [
+                    "\(kind.localizedTitle):\(category.name)",
+                    "\(kind.localizedTitle):\(category.name.localized)",
+                    "\(kind.storageKey):\(category.id)"
+                ]
+            }
         }
 
         let paymentMethods = uniqueStrings(
@@ -396,7 +402,7 @@ private enum AutoLedgerDirectSaver {
             let category = mapCategory(from: primaryCandidate.category, categories: categories, kind: kind)
             let merchant = (primaryCandidate.merchant ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let note = (primaryCandidate.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            primaryTitle = merchant.isEmpty ? (note.isEmpty ? category.name : note) : merchant
+            primaryTitle = merchant.isEmpty ? (note.isEmpty ? category.name.localized : note) : merchant
             primaryAmount = amount
             primaryCategory = category
         }
@@ -408,7 +414,7 @@ private enum AutoLedgerDirectSaver {
             let paymentMethod = mapPaymentMethod(from: entry.paymentMethod, in: snapshot)
             let merchant = (entry.merchant ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let note = (entry.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let title = merchant.isEmpty ? (note.isEmpty ? category.name : note) : merchant
+            let title = merchant.isEmpty ? (note.isEmpty ? category.name.localized : note) : merchant
             let amount = entry.amount ?? 0
 
             snapshot.entries.insert(
@@ -433,7 +439,7 @@ private enum AutoLedgerDirectSaver {
             let category = mapCategory(from: firstEntry.category, categories: categories, kind: kind)
             let merchant = (firstEntry.merchant ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let note = (firstEntry.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            primaryTitle = merchant.isEmpty ? (note.isEmpty ? category.name : note) : merchant
+            primaryTitle = merchant.isEmpty ? (note.isEmpty ? category.name.localized : note) : merchant
             primaryAmount = firstEntry.amount ?? 0
             primaryCategory = category
         }
@@ -493,13 +499,20 @@ private enum AutoLedgerDirectSaver {
             return byID
         }
 
-        if let byName = categories.first(where: { $0.name.caseInsensitiveCompare(hint) == .orderedSame }) {
+        if let byName = categories.first(where: {
+            $0.name.caseInsensitiveCompare(hint) == .orderedSame ||
+                $0.name.localized.caseInsensitiveCompare(hint) == .orderedSame
+        }) {
             return byName
         }
 
         if let fuzzy = categories.first(where: {
-            let normalizedCategoryName = normalizedLookupText($0.name)
-            return normalizedCategoryName.contains(normalizedHint) || normalizedHint.contains(normalizedCategoryName)
+            let candidates = [$0.name, $0.name.localized]
+            return candidates.contains { candidate in
+                let normalizedCategoryName = normalizedLookupText(candidate)
+                return normalizedCategoryName.contains(normalizedHint) || normalizedHint
+                    .contains(normalizedCategoryName)
+            }
         }) {
             return fuzzy
         }

@@ -928,7 +928,7 @@ final class AutoLedgerViewModel: ObservableObject {
     var shortcutStatusPresentation: AutoLedgerShortcutStatusPresentation {
         if let lastErrorMessage = shortcutStatus.lastErrorMessage, !lastErrorMessage.isEmpty {
             return AutoLedgerShortcutStatusPresentation(
-                title: "最近一次触发失败",
+                title: "最近一次触发失败".localized,
                 detail: lastErrorMessage,
                 tint: "error")
         }
@@ -937,26 +937,32 @@ final class AutoLedgerViewModel: ObservableObject {
            let source = shortcutStatus.lastSource {
             let completionText = if let lastCompletedAt = shortcutStatus.lastCompletedAt,
                                     lastCompletedAt >= lastTriggeredAt {
-                "，已完成一次自动入账"
+                "，已完成一次自动入账".localized
             } else {
-                "，正在完成识别"
+                "，正在完成识别".localized
             }
 
             return AutoLedgerShortcutStatusPresentation(
-                title: "已检测到快捷动作可用",
+                title: "已检测到快捷动作可用".localized,
                 detail: "\(LedgerFormatters.shortTimestamp(lastTriggeredAt)) 通过\(source.displayName)触发\(completionText)",
                 tint: "success")
         }
 
         return AutoLedgerShortcutStatusPresentation(
-            title: "还没有快捷动作记录",
-            detail: "先在快捷指令里按“截图 -> 从截图获取图像 -> 识别账单”搭好链路，再绑定到辅助触控或操作按钮。",
+            title: "还没有快捷动作记录".localized,
+            detail: "先在快捷指令里按“截图 -> 从截图获取图像 -> 识别账单”搭好链路，再绑定到辅助触控或操作按钮。".localized,
             tint: "idle")
     }
 
     private func makeContext(from store: LedgerStore) -> AutoLedgerParseContext {
         let categories = LedgerKind.allCases.flatMap { kind in
-            store.categories(for: kind).map { "\(kind.rawValue):\($0.name)" }
+            store.categories(for: kind).flatMap { category in
+                [
+                    "\(kind.localizedTitle):\(category.name)",
+                    "\(kind.localizedTitle):\(category.name.localized)",
+                    "\(kind.storageKey):\(category.id)"
+                ]
+            }
         }
 
         return AutoLedgerParseContext(
@@ -1007,13 +1013,20 @@ final class AutoLedgerViewModel: ObservableObject {
             return byID
         }
 
-        if let byName = categories.first(where: { $0.name.caseInsensitiveCompare(hint) == .orderedSame }) {
+        if let byName = categories.first(where: {
+            $0.name.caseInsensitiveCompare(hint) == .orderedSame ||
+                $0.name.localized.caseInsensitiveCompare(hint) == .orderedSame
+        }) {
             return byName
         }
 
         if let fuzzy = categories.first(where: {
-            let normalizedCategoryName = normalizedLookupText($0.name)
-            return normalizedCategoryName.contains(normalizedHint) || normalizedHint.contains(normalizedCategoryName)
+            let candidates = [$0.name, $0.name.localized]
+            return candidates.contains { candidate in
+                let normalizedCategoryName = normalizedLookupText(candidate)
+                return normalizedCategoryName.contains(normalizedHint) || normalizedHint
+                    .contains(normalizedCategoryName)
+            }
         }) {
             return fuzzy
         }
@@ -1218,7 +1231,7 @@ final class AutoLedgerViewModel: ObservableObject {
             let category = resolvedCategory(from: draft, store: store)
             let note = draft.note.trimmingCharacters(in: .whitespacesAndNewlines)
             let merchant = draft.merchant.trimmingCharacters(in: .whitespacesAndNewlines)
-            let title = merchant.isEmpty ? (note.isEmpty ? category.name : note) : merchant
+            let title = merchant.isEmpty ? (note.isEmpty ? category.name.localized : note) : merchant
 
             let createdEntry = store.addEntry(
                 bookID: draft.bookID ?? store.currentBook.id,
@@ -1240,7 +1253,7 @@ final class AutoLedgerViewModel: ObservableObject {
             if !merchant.isEmpty {
                 savedSummary += " · \(merchant)"
             } else {
-                savedSummary += " · \(category.name)"
+                savedSummary += " · \(category.name.localized)"
             }
 
             if draft.recognizedEntryCount > 1 {
@@ -1278,7 +1291,7 @@ final class AutoLedgerViewModel: ObservableObject {
         let category = resolvedCategory(from: draft, store: store)
         let note = draft.note.trimmingCharacters(in: .whitespacesAndNewlines)
         let merchant = draft.merchant.trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = merchant.isEmpty ? (note.isEmpty ? category.name : note) : merchant
+        let title = merchant.isEmpty ? (note.isEmpty ? category.name.localized : note) : merchant
 
         return store.addEntry(
             bookID: draft.bookID ?? store.currentBook.id,
@@ -1308,7 +1321,7 @@ final class AutoLedgerViewModel: ObservableObject {
         let paymentMethod = mapPaymentMethod(from: entry.paymentMethod, store: store)
         let merchant = (entry.merchant ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let note = (entry.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = merchant.isEmpty ? (note.isEmpty ? category.name : note) : merchant
+        let title = merchant.isEmpty ? (note.isEmpty ? category.name.localized : note) : merchant
 
         return store.addEntry(
             kind: kind,
