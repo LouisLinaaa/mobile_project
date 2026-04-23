@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct DrawerMenuView: View {
+    @EnvironmentObject private var store: LedgerStore
+
     let width: CGFloat
     let topSafeInset: CGFloat
     let selectedDestination: DrawerDestination?
@@ -58,34 +60,28 @@ struct DrawerMenuView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(Color.ledgerAccentSoft)
-                    .frame(width: 52, height: 52)
+        Button {
+            onShortcutTap(.screen(.profile))
+        } label: {
+            HStack(spacing: 12) {
+                DrawerAvatarView(imageData: store.appSettings.userProfile.avatarData, size: 52)
 
-                Image(systemName: "person.crop.circle.fill")
-                    .font(.system(size: 36))
-                    .foregroundStyle(Color.ledgerAccent)
-            }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(store.appSettings.userProfile.displayName)
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.ledgerText)
+                        .lineLimit(1)
+                }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("我的账本")
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.ledgerText)
+                Spacer()
 
-                Text("本机存储 · 简洁记账")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Color.ledgerMuted)
             }
-
-            Spacer()
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(Color.ledgerMuted)
+            .padding(.horizontal, 2)
         }
-        .padding(.horizontal, 2)
+        .buttonStyle(LedgerResponsiveButtonStyle())
     }
 
     private var linkCard: some View {
@@ -142,6 +138,36 @@ struct DrawerMenuView: View {
             }
         }
         .ledgerCard()
+    }
+}
+
+struct DrawerAvatarView: View {
+    let imageData: Data?
+    let size: CGFloat
+
+    private var avatarImage: UIImage? {
+        guard let imageData else { return nil }
+        return UIImage(data: imageData)
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color.ledgerAccentSoft)
+                .frame(width: size, height: size)
+
+            if let avatarImage {
+                Image(uiImage: avatarImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size, height: size)
+                    .clipShape(Circle())
+            } else {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: size * 0.7))
+                    .foregroundStyle(Color.ledgerAccent)
+            }
+        }
     }
 }
 

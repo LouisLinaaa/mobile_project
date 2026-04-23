@@ -58,12 +58,12 @@
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string></string>
+	<string>用于语音识别记账内容，帮你快速生成账单记录。</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string></string>
+	<string>用于录入语音记账内容，帮助你更快完成记账。</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string></string>
+	<string>用于从相册选择头像、账单截图和导入记账图片。</string>
 	<key>NSCameraUsageDescription</key>
-	<string></string>
+	<string>用于拍摄账单图片和上传个人头像。</string>
 </dict>
 </plist>
