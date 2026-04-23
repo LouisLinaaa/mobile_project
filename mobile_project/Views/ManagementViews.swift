@@ -1435,6 +1435,8 @@ struct ProfileSettingsView: View {
     @State private var activeEditor: ProfileEditorField?
     @State private var isGenderSheetPresented = false
     @State private var genderDraft = ""
+    @State private var avatarLoadTask: Task<Void, Never>?
+    @State private var avatarSelectionToken = UUID()
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -1469,16 +1471,28 @@ struct ProfileSettingsView: View {
         }
         .onChange(of: selectedAvatarItem) { _, item in
             guard let item else { return }
-            Task {
+            avatarLoadTask?.cancel()
+            let selectionToken = UUID()
+            avatarSelectionToken = selectionToken
+            avatarLoadTask = Task {
                 if let data = try? await item.loadTransferable(type: Data.self) {
+                    guard !Task.isCancelled else { return }
+                    let normalizedData = await Task.detached(priority: .userInitiated) {
+                        normalizedAvatarData(from: data)
+                    }.value
+                    guard !Task.isCancelled else { return }
                     await MainActor.run {
-                        store.updateUserAvatar(data: normalizedAvatarData(from: data))
+                        guard avatarSelectionToken == selectionToken else { return }
+                        store.updateUserAvatar(data: normalizedData)
                     }
                 }
             }
         }
         .onAppear {
             genderDraft = store.appSettings.userProfile.gender
+        }
+        .onDisappear {
+            avatarLoadTask?.cancel()
         }
     }
 
@@ -1592,11 +1606,6 @@ struct ProfileSettingsView: View {
         let shortVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let buildVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
         return shortVersion == buildVersion ? shortVersion : "\(shortVersion).\(buildVersion)"
-    }
-
-    private func normalizedAvatarData(from data: Data) -> Data {
-        guard let image = UIImage(data: data) else { return data }
-        return image.jpegData(compressionQuality: 0.82) ?? data
     }
 }
 
@@ -1742,6 +1751,44 @@ private struct ProfileGenderSheet: View {
         .presentationDetents([.height(430)])
         .presentationDragIndicator(.hidden)
     }
+}
+
+private func normalizedAvatarData(from data: Data) -> Data {
+    guard let image = UIImage(data: data) else { return data }
+
+    let maxDimension: CGFloat = 512
+    let originalSize = image.size
+    let longestEdge = max(originalSize.width, originalSize.height)
+    let scale = min(1, maxDimension / max(longestEdge, 1))
+    let targetSize = CGSize(
+        width: max(1, floor(originalSize.width * scale)),
+        height: max(1, floor(originalSize.height * scale)))
+
+    let renderedImage: UIImage
+    if scale < 1 {
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        renderedImage = UIGraphicsImageRenderer(size: targetSize, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+    } else {
+        renderedImage = image
+    }
+
+    let compressionQualities: [CGFloat] = [0.82, 0.68, 0.52]
+    let maxByteCount = 350_000
+    var fallbackData = data
+
+    for quality in compressionQualities {
+        if let jpegData = renderedImage.jpegData(compressionQuality: quality) {
+            fallbackData = jpegData
+            if jpegData.count <= maxByteCount {
+                return jpegData
+            }
+        }
+    }
+
+    return fallbackData
 }
 
 struct SettingsView: View {
@@ -3693,7 +3740,7 @@ final class ScreenshotOCRViewModel: ObservableObject {
             return
         }
 
-        Task(priority: .userInitiated) { [weak self] in
+        Task.detached(priority: .userInitiated) { [weak self] in
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
             let request = VNRecognizeTextRequest { request, error in
                 guard let self else { return }
