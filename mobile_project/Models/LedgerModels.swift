@@ -19,6 +19,10 @@ enum LedgerKind: String, CaseIterable, Identifiable, Codable {
     var localizedTitle: String {
         rawValue.localized
     }
+
+    var localizedTitleVariants: [String] {
+        rawValue.localizedVariants
+    }
 }
 
 enum LedgerTintStyle: String, CaseIterable, Identifiable, Codable {
@@ -79,6 +83,10 @@ struct LedgerCategory: Identifiable, Hashable, Codable {
     let kind: LedgerKind
 
     var tint: Color { tintStyle.color }
+
+    var localizedNameVariants: [String] {
+        name.localizedVariants
+    }
 
     static func == (lhs: LedgerCategory, rhs: LedgerCategory) -> Bool {
         lhs.id == rhs.id

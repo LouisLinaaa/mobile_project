@@ -944,7 +944,11 @@ final class AutoLedgerViewModel: ObservableObject {
 
             return AutoLedgerShortcutStatusPresentation(
                 title: "已检测到快捷动作可用".localized,
-                detail: "\(LedgerFormatters.shortTimestamp(lastTriggeredAt)) 通过\(source.displayName)触发\(completionText)",
+                detail: L10n.format(
+                    "%@ 通过%@触发%@",
+                    LedgerFormatters.shortTimestamp(lastTriggeredAt),
+                    source.displayName,
+                    completionText),
                 tint: "success")
         }
 
@@ -957,11 +961,16 @@ final class AutoLedgerViewModel: ObservableObject {
     private func makeContext(from store: LedgerStore) -> AutoLedgerParseContext {
         let categories = LedgerKind.allCases.flatMap { kind in
             store.categories(for: kind).flatMap { category in
-                [
-                    "\(kind.localizedTitle):\(category.name)",
-                    "\(kind.localizedTitle):\(category.name.localized)",
-                    "\(kind.storageKey):\(category.id)"
-                ]
+                let namedCandidates = kind.localizedTitleVariants.flatMap { kindName in
+                    category.localizedNameVariants.map { categoryName in
+                        "\(kindName):\(categoryName)"
+                    }
+                }
+
+                return uniqueStrings(
+                    namedCandidates
+                        + category.localizedNameVariants
+                        + ["\(kind.storageKey):\(category.id)", category.id])
             }
         }
 
@@ -1007,25 +1016,30 @@ final class AutoLedgerViewModel: ObservableObject {
             return fallbackCategory(from: categories, kind: kind)
         }
 
-        let normalizedHint = normalizedLookupText(hint)
+        let hintCandidates = expandedHintCandidates(from: hint)
+        let normalizedHints = hintCandidates.map(normalizedLookupText)
 
-        if let byID = categories.first(where: { $0.id.caseInsensitiveCompare(hint) == .orderedSame }) {
+        if let byID = categories.first(where: { category in
+            hintCandidates.contains { category.id.caseInsensitiveCompare($0) == .orderedSame }
+        }) {
             return byID
         }
 
-        if let byName = categories.first(where: {
-            $0.name.caseInsensitiveCompare(hint) == .orderedSame ||
-                $0.name.localized.caseInsensitiveCompare(hint) == .orderedSame
+        if let byName = categories.first(where: { category in
+            category.localizedNameVariants.contains { candidate in
+                hintCandidates.contains { candidate.caseInsensitiveCompare($0) == .orderedSame }
+            }
         }) {
             return byName
         }
 
-        if let fuzzy = categories.first(where: {
-            let candidates = [$0.name, $0.name.localized]
-            return candidates.contains { candidate in
+        if let fuzzy = categories.first(where: { category in
+            category.localizedNameVariants.contains { candidate in
                 let normalizedCategoryName = normalizedLookupText(candidate)
-                return normalizedCategoryName.contains(normalizedHint) || normalizedHint
-                    .contains(normalizedCategoryName)
+                return normalizedHints.contains { normalizedHint in
+                    normalizedCategoryName.contains(normalizedHint) || normalizedHint
+                        .contains(normalizedCategoryName)
+                }
             }
         }) {
             return fuzzy
@@ -1084,6 +1098,16 @@ final class AutoLedgerViewModel: ObservableObject {
         }
 
         return result
+    }
+
+    private func expandedHintCandidates(from hint: String) -> [String] {
+        let trimmedHint = hint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let segments = trimmedHint
+            .split(separator: ":")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        return uniqueStrings([trimmedHint] + segments)
     }
 
     private func normalizedLookupText(_ text: String) -> String {

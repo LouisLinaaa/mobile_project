@@ -333,11 +333,16 @@ private enum AutoLedgerDirectRunner {
         let categories = LedgerKind.allCases.flatMap { kind -> [String] in
             let source = kind == .expense ? selectedScheme.expenseCategories : selectedScheme.incomeCategories
             return source.flatMap { category in
-                [
-                    "\(kind.localizedTitle):\(category.name)",
-                    "\(kind.localizedTitle):\(category.name.localized)",
-                    "\(kind.storageKey):\(category.id)"
-                ]
+                let namedCandidates = kind.localizedTitleVariants.flatMap { kindName in
+                    category.localizedNameVariants.map { categoryName in
+                        "\(kindName):\(categoryName)"
+                    }
+                }
+
+                return uniqueStrings(
+                    namedCandidates
+                        + category.localizedNameVariants
+                        + ["\(kind.storageKey):\(category.id)", category.id])
             }
         }
 
@@ -493,25 +498,30 @@ private enum AutoLedgerDirectSaver {
             return fallbackCategory(from: categories, kind: kind)
         }
 
-        let normalizedHint = normalizedLookupText(hint)
+        let hintCandidates = expandedHintCandidates(from: hint)
+        let normalizedHints = hintCandidates.map(normalizedLookupText)
 
-        if let byID = categories.first(where: { $0.id.caseInsensitiveCompare(hint) == .orderedSame }) {
+        if let byID = categories.first(where: { category in
+            hintCandidates.contains { category.id.caseInsensitiveCompare($0) == .orderedSame }
+        }) {
             return byID
         }
 
-        if let byName = categories.first(where: {
-            $0.name.caseInsensitiveCompare(hint) == .orderedSame ||
-                $0.name.localized.caseInsensitiveCompare(hint) == .orderedSame
+        if let byName = categories.first(where: { category in
+            category.localizedNameVariants.contains { candidate in
+                hintCandidates.contains { candidate.caseInsensitiveCompare($0) == .orderedSame }
+            }
         }) {
             return byName
         }
 
-        if let fuzzy = categories.first(where: {
-            let candidates = [$0.name, $0.name.localized]
-            return candidates.contains { candidate in
+        if let fuzzy = categories.first(where: { category in
+            category.localizedNameVariants.contains { candidate in
                 let normalizedCategoryName = normalizedLookupText(candidate)
-                return normalizedCategoryName.contains(normalizedHint) || normalizedHint
-                    .contains(normalizedCategoryName)
+                return normalizedHints.contains { normalizedHint in
+                    normalizedCategoryName.contains(normalizedHint) || normalizedHint
+                        .contains(normalizedCategoryName)
+                }
             }
         }) {
             return fuzzy
@@ -580,6 +590,16 @@ private enum AutoLedgerDirectSaver {
         }
 
         return result
+    }
+
+    private static func expandedHintCandidates(from hint: String) -> [String] {
+        let trimmedHint = hint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let segments = trimmedHint
+            .split(separator: ":")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        return uniqueStrings([trimmedHint] + segments)
     }
 }
 
