@@ -243,7 +243,7 @@ struct StatisticsView: View {
                 .foregroundStyle(Color.ledgerText)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 11)
-                .background(.white.opacity(0.88))
+                .background(Color.ledgerElevated.opacity(0.88))
                 .clipShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -494,12 +494,12 @@ struct AssetManagementView: View {
                     title: "资产",
                     value: store.totalAssets,
                     valueColor: Color.ledgerText,
-                    background: Color.white.opacity(0.45))
+                    background: Color.ledgerSurface.opacity(0.45))
                 MetricBlock(
                     title: "负债",
                     value: store.totalLiabilities,
                     valueColor: Color.ledgerText,
-                    background: Color.white.opacity(0.45))
+                    background: Color.ledgerSurface.opacity(0.45))
             }
         }
         .padding(22)
@@ -560,7 +560,7 @@ struct AssetManagementView: View {
                                 .foregroundStyle(group.affectsAssets ? Color.ledgerIncome : Color.ledgerExpense)
                         }
                         .padding(14)
-                        .background(.white)
+                        .background(Color.ledgerElevated)
                         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                     }
                     .buttonStyle(.plain)
@@ -647,7 +647,7 @@ struct BookManagementView: View {
                             }
                         }
                         .padding(18)
-                        .background(.white)
+                        .background(Color.ledgerElevated)
                         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                     }
                     .buttonStyle(.plain)
@@ -709,7 +709,7 @@ struct BookManagementView: View {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [Color.white, store.currentBook.tintStyle.color.opacity(0.10)],
+                        colors: [Color.ledgerSurface, store.currentBook.tintStyle.color.opacity(0.10)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing)))
     }
@@ -788,7 +788,7 @@ struct CategoryManagementView: View {
                             }
                         }
                         .padding(20)
-                        .background(.white)
+                        .background(Color.ledgerElevated)
                         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                     }
                     .buttonStyle(.plain)
@@ -888,7 +888,7 @@ private struct CategorySchemeDetailView: View {
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
-                                .background(.white)
+                                .background(Color.ledgerElevated)
                                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                                 .contextMenu {
                                     Button("删除分类", role: .destructive) {
@@ -919,7 +919,7 @@ private struct CategorySchemeDetailView: View {
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
-                                .background(.white)
+                                .background(Color.ledgerElevated)
                                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                             }
                             .buttonStyle(.plain)
@@ -985,7 +985,7 @@ private struct AccountEditorSheet: View {
 
                         TextField("请输入名称", text: $accountName)
                             .padding(18)
-                            .background(.white)
+                            .background(Color.ledgerElevated)
                             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                     }
 
@@ -997,7 +997,7 @@ private struct AccountEditorSheet: View {
                         TextField("0.00", text: $balanceText)
                             .keyboardType(.decimalPad)
                             .padding(18)
-                            .background(.white)
+                            .background(Color.ledgerElevated)
                             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                     }
 
@@ -1036,7 +1036,7 @@ private struct AccountEditorSheet: View {
                                         .background(
                                             RoundedRectangle(cornerRadius: 22, style: .continuous)
                                                 .fill(selectedTemplateID == template.id ? template.tintStyle.color
-                                                    .opacity(0.08) : Color.white)
+                                                    .opacity(0.08) : Color.ledgerSurface)
                                                 .overlay(
                                                     RoundedRectangle(cornerRadius: 22, style: .continuous)
                                                         .stroke(
@@ -1217,7 +1217,7 @@ private struct AddCategorySheet: View {
 
                         TextField("请输入名称", text: $name)
                             .padding(18)
-                            .background(.white)
+                            .background(Color.ledgerElevated)
                             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                     }
 
@@ -1232,7 +1232,7 @@ private struct AddCategorySheet: View {
                                     selectedIcon = icon
                                 } label: {
                                     Circle()
-                                        .fill(Color.white)
+                                        .fill(Color.ledgerSurface)
                                         .frame(width: 54, height: 54)
                                         .overlay {
                                             Image(systemName: icon)
@@ -1266,7 +1266,7 @@ private struct AddCategorySheet: View {
                                         .frame(width: 34, height: 34)
                                         .overlay {
                                             Circle()
-                                                .stroke(Color.white, lineWidth: 2)
+                                                .stroke(.white, lineWidth: 2)
                                                 .padding(3)
                                         }
                                         .overlay {
@@ -1507,7 +1507,7 @@ struct ProfileSettingsView: View {
                 PhotosPicker(selection: $selectedAvatarItem, matching: .images) {
                     ZStack {
                         Circle()
-                            .fill(.white)
+                            .fill(Color.ledgerSurface)
                             .frame(width: 44, height: 44)
                             .shadow(color: Color.black.opacity(0.08), radius: 10, x: 0, y: 4)
 
@@ -1670,7 +1670,7 @@ private struct ProfileTextEditSheet: View {
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 24)
-        .background(Color.white)
+        .background(Color.ledgerElevated)
         .presentationDetents([.height(280)])
         .presentationDragIndicator(.hidden)
         .onAppear {
@@ -1750,7 +1750,7 @@ private struct ProfileGenderSheet: View {
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 24)
-        .background(Color.white)
+        .background(Color.ledgerElevated)
         .presentationDetents([.height(430)])
         .presentationDragIndicator(.hidden)
     }
@@ -2714,7 +2714,7 @@ struct LedgerHistoryView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
-        .background(Color.white)
+        .background(Color.ledgerElevated)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
@@ -4138,7 +4138,7 @@ struct AIBillingView: View {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 26))
                     .foregroundStyle(Color.ledgerMuted)
-                    .background(Circle().fill(.white))
+                    .background(Circle().fill(Color.ledgerSurface))
             }
             .buttonStyle(.plain)
             .padding(8)
@@ -4381,7 +4381,7 @@ struct AIBillingView: View {
             }
             .buttonStyle(LedgerResponsiveButtonStyle())
         }
-        .background(.white)
+        .background(Color.ledgerElevated)
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .shadow(color: Color.black.opacity(0.05), radius: 16, x: 0, y: 8)
     }

@@ -9,6 +9,7 @@ struct HomeView: View {
 
     @EnvironmentObject private var store: LedgerStore
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var isDrawerPresented = false
     @State private var activeHomeTab: HomePrimaryTab = .ledger
@@ -41,7 +42,7 @@ struct HomeView: View {
                     Button {
                         closeDrawer()
                     } label: {
-                        Color.black.opacity(0.10)
+                        Color.ledgerScrim.opacity(colorScheme == .dark ? 0.34 : 0.12)
                             .ignoresSafeArea()
                     }
                     .buttonStyle(.plain)
@@ -205,7 +206,8 @@ struct HomeView: View {
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(Color.ledgerMuted)
                     .frame(width: 44, height: 44)
-                    .background(.white.opacity(0.75))
+                    .background(Color.ledgerElevated.opacity(colorScheme == .dark ? 0.82 : 0.78))
+                    .overlay(Circle().stroke(Color.ledgerCardStroke, lineWidth: 1))
                     .clipShape(Circle())
             }
             .buttonStyle(LedgerResponsiveButtonStyle())
@@ -226,7 +228,8 @@ struct HomeView: View {
             homeTabItem(.calendar, icon: "calendar")
         }
         .padding(4)
-        .background(.white.opacity(0.86))
+        .background(Color.ledgerElevated.opacity(colorScheme == .dark ? 0.88 : 0.90))
+        .overlay(Capsule().stroke(Color.ledgerCardStroke, lineWidth: 1))
         .clipShape(Capsule())
     }
 
@@ -344,7 +347,7 @@ struct HomeView: View {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [Color.white, Color.ledgerCard],
+                        colors: [Color.ledgerSurface, Color.ledgerCard],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing))
                 .shadow(color: Color.ledgerAccent.opacity(0.08), radius: 20, x: 0, y: 14))
@@ -365,9 +368,12 @@ struct HomeView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.ledgerAccent)
                     .frame(width: 38, height: 38)
-                    .background(.white)
+                    .background(Color.ledgerElevated)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 4)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.ledgerCardStroke, lineWidth: 1))
+                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.16 : 0.04), radius: 10, x: 0, y: 4)
             }
             .buttonStyle(LedgerResponsiveButtonStyle())
         }
@@ -556,9 +562,10 @@ struct HomeView: View {
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(Color.ledgerText)
                         .frame(width: 50, height: 50)
-                        .background(.white.opacity(0.96))
+                        .background(Color.ledgerElevated.opacity(colorScheme == .dark ? 0.92 : 0.96))
                         .clipShape(Circle())
-                        .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 6)
+                        .overlay(Circle().stroke(Color.ledgerCardStroke, lineWidth: 1))
+                        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.18 : 0.04), radius: 10, x: 0, y: 6)
                 }
                 .buttonStyle(LedgerResponsiveButtonStyle())
             }
@@ -588,9 +595,10 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, 16)
                 .frame(height: 54)
-                .background(.white.opacity(0.96))
+                .background(Color.ledgerElevated.opacity(colorScheme == .dark ? 0.94 : 0.96))
                 .clipShape(Capsule())
-                .shadow(color: Color.black.opacity(0.06), radius: 14, x: 0, y: 8)
+                .overlay(Capsule().stroke(Color.ledgerCardStroke, lineWidth: 1))
+                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.20 : 0.06), radius: 14, x: 0, y: 8)
             }
             .buttonStyle(LedgerResponsiveButtonStyle())
         }
@@ -599,7 +607,11 @@ struct HomeView: View {
         .padding(.bottom, 8)
         .background(
             LinearGradient(
-                colors: [Color.white.opacity(0.0), Color.white.opacity(0.68), Color.white],
+                colors: [
+                    Color.ledgerCanvas.opacity(0.0),
+                    Color.ledgerCanvas.opacity(colorScheme == .dark ? 0.84 : 0.68),
+                    Color.ledgerCanvas
+                ],
                 startPoint: .top,
                 endPoint: .bottom)
                 .ignoresSafeArea())
@@ -819,7 +831,7 @@ private struct CapsuleIconButton: View {
             .foregroundStyle(Color.ledgerText)
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
-            .background(.white.opacity(0.78))
+            .background(Color.ledgerElevated.opacity(0.78))
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .buttonStyle(LedgerResponsiveButtonStyle())
@@ -1074,7 +1086,7 @@ struct LedgerEntryDetailSheet: View {
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
                     .fill(
                         LinearGradient(
-                            colors: [Color.white, Color.ledgerCard],
+                            colors: [Color.ledgerSurface, Color.ledgerCard],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing)))
         }
@@ -1232,7 +1244,7 @@ struct LedgerEntryDetailSheet: View {
                     .foregroundStyle(Color.red)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 18)
-                    .background(Color.white)
+                    .background(Color.ledgerElevated)
             }
             .buttonStyle(.plain)
         }
@@ -1755,7 +1767,7 @@ private struct LedgerTagsEditorSheet: View {
                     TextField("例如：出差, 港币, 便利店", text: $input, axis: .vertical)
                         .lineLimit(3...6)
                         .padding(16)
-                        .background(Color.white)
+                        .background(Color.ledgerElevated)
                         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
                     if !suggestions.isEmpty {

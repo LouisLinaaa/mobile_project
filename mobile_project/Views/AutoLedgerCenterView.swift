@@ -97,7 +97,7 @@ struct AutoLedgerCenterView: View {
                     .foregroundStyle(Color.ledgerMuted.opacity(0.5))
             }
             .padding(16)
-            .background(Color.white)
+            .background(Color.ledgerElevated)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .shadow(color: Color.black.opacity(0.05), radius: 12, x: 0, y: 4)
         }
@@ -106,7 +106,7 @@ struct AutoLedgerCenterView: View {
 
     private var backgroundView: some View {
         LinearGradient(
-            colors: [Color.ledgerAccentSoft.opacity(0.58), Color.ledgerCanvas, .white],
+            colors: [Color.ledgerAccentSoft.opacity(0.58), Color.ledgerCanvas, Color.ledgerCanvas],
             startPoint: .topLeading,
             endPoint: .bottomTrailing)
     }
@@ -425,7 +425,7 @@ private func debugSection(title: String, content: String, tint: Color = .ledgerT
             .foregroundStyle(tint)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(10)
-            .background(.white.opacity(0.92))
+            .background(Color.ledgerElevated.opacity(0.92))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .textSelection(.enabled)
     }
@@ -453,7 +453,7 @@ private struct AutoLedgerBlueprintSheet: View {
                     }
                     .padding(22)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.white.opacity(0.96))
+                    .background(Color.ledgerElevated.opacity(0.96))
                     .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
                     .shadow(color: Color.ledgerAccent.opacity(0.10), radius: 18, x: 0, y: 10)
 
@@ -521,7 +521,7 @@ private struct AutoLedgerBlueprintSheet: View {
             }
             .background(
                 LinearGradient(
-                    colors: [Color.ledgerAccentSoft.opacity(0.55), Color.ledgerCanvas, .white],
+                    colors: [Color.ledgerAccentSoft.opacity(0.55), Color.ledgerCanvas, Color.ledgerCanvas],
                     startPoint: .topLeading,
                     endPoint: .bottom)
                     .ignoresSafeArea())
@@ -687,7 +687,7 @@ private func blueprintSection(title: String, @ViewBuilder content: () -> some Vi
     }
     .padding(20)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(.white)
+    .background(Color.ledgerElevated)
     .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
     .shadow(color: Color.black.opacity(0.04), radius: 16, x: 0, y: 10)
 }

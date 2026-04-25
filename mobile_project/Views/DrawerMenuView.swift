@@ -41,7 +41,7 @@ struct DrawerMenuView: View {
                 bottomLeadingRadius: 0,
                 bottomTrailingRadius: 40,
                 topTrailingRadius: 40)
-                .fill(.white)
+                .fill(Color.ledgerSurface)
                 .shadow(color: Color.black.opacity(0.08), radius: 24, x: 10, y: 0))
         .overlay(alignment: .topTrailing) {
             Button(action: onClose) {

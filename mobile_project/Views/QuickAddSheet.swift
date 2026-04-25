@@ -55,6 +55,7 @@ private struct LedgerEntryEditorForm: View {
     let onSave: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @FocusState private var isAmountFocused: Bool
 
     var body: some View {
@@ -134,8 +135,11 @@ private struct LedgerEntryEditorForm: View {
 
             TextField("例如：午饭、滴滴、工资到账", text: $draft.titleText)
                 .padding(18)
-                .background(.white)
+                .background(Color.ledgerElevated)
                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(Color.ledgerCardStroke, lineWidth: 1))
                 .font(.system(size: 16, weight: .medium, design: .rounded))
                 .foregroundStyle(Color.ledgerText)
         }
@@ -159,9 +163,12 @@ private struct LedgerEntryEditorForm: View {
                     .foregroundStyle(Color.ledgerText)
             }
             .padding(18)
-            .background(.white)
+            .background(Color.ledgerElevated)
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .shadow(color: Color.black.opacity(0.04), radius: 12, x: 0, y: 8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(isAmountFocused ? Color.ledgerAccent : Color.ledgerCardStroke, lineWidth: 1.2))
+            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.18 : 0.04), radius: 12, x: 0, y: 8)
         }
     }
 
@@ -195,8 +202,8 @@ private struct LedgerEntryEditorForm: View {
                         .frame(maxWidth: .infinity)
                         .background(
                             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                .fill(draft.selectedCategory.id == category.id ? category.tint.opacity(0.12) : Color
-                                    .white)
+                                .fill(draft.selectedCategory.id == category.id ? category.tint.opacity(0.14) : Color
+                                    .ledgerElevated)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 20, style: .continuous)
                                         .stroke(
@@ -232,8 +239,11 @@ private struct LedgerEntryEditorForm: View {
                         .foregroundStyle(Color.ledgerMuted)
                 }
                 .padding(18)
-                .background(.white)
+                .background(Color.ledgerElevated)
                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(Color.ledgerCardStroke, lineWidth: 1))
             }
             .buttonStyle(.plain)
         }
@@ -253,8 +263,11 @@ private struct LedgerEntryEditorForm: View {
                 .datePickerStyle(.compact)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(18)
-                .background(.white)
+                .background(Color.ledgerElevated)
                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(Color.ledgerCardStroke, lineWidth: 1))
         }
     }
 
@@ -267,8 +280,11 @@ private struct LedgerEntryEditorForm: View {
             TextField("例如：午饭、打车、四月工资", text: $draft.note, axis: .vertical)
                 .lineLimit(2...4)
                 .padding(18)
-                .background(.white)
+                .background(Color.ledgerElevated)
                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(Color.ledgerCardStroke, lineWidth: 1))
                 .font(.system(size: 16, weight: .medium, design: .rounded))
                 .foregroundStyle(Color.ledgerText)
         }
