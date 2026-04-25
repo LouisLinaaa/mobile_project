@@ -1850,6 +1850,9 @@ struct SettingsView: View {
         } message: {
             Text("这会清空当前本地账单记录，但不会删除账本、账户和分类设置。")
         }
+        .task {
+            store.refreshNotificationAuthorizationStatus()
+        }
     }
 
     private var displaySettingsCard: some View {
@@ -1892,12 +1895,14 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             SettingToggleRow(
                 title: "推送服务",
-                subtitle: "总开关会联动下方提醒项",
+                subtitle: "本地提醒会根据预算和记账状态自动安排",
                 isOn: Binding(
                     get: { store.appSettings.pushEnabled },
                     set: { store.setPushEnabled($0) }))
                 .padding(.horizontal, SettingsLayout.rowHorizontalPadding)
                 .padding(.top, 16)
+
+            notificationStatusRow
 
             VStack(spacing: 0) {
                 SettingCheckRow(
@@ -1934,6 +1939,83 @@ struct SettingsView: View {
             .disabled(!store.appSettings.pushEnabled)
         }
         .ledgerCard()
+    }
+
+    private var notificationStatusRow: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: notificationStatusIcon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(notificationStatusTint)
+                .frame(width: 28, height: 28)
+                .background(notificationStatusTint.opacity(0.12))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(store.notificationAuthorizationState.title)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.ledgerText)
+                Text(store.notificationAuthorizationState.subtitle)
+                    .font(.system(size: SettingsLayout.subtitleFontSize, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.ledgerMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 12)
+
+            if let actionTitle = notificationStatusActionTitle {
+                Button(actionTitle) {
+                    handleNotificationStatusAction()
+                }
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.ledgerAccent)
+            }
+        }
+        .padding(.horizontal, SettingsLayout.rowHorizontalPadding)
+        .padding(.bottom, 4)
+    }
+
+    private var notificationStatusIcon: String {
+        switch store.notificationAuthorizationState {
+        case .authorized, .provisional, .ephemeral:
+            "bell.badge.fill"
+        case .denied:
+            "bell.slash.fill"
+        case .unknown, .notDetermined:
+            "bell.fill"
+        }
+    }
+
+    private var notificationStatusTint: Color {
+        switch store.notificationAuthorizationState {
+        case .authorized, .provisional, .ephemeral:
+            .ledgerIncome
+        case .denied:
+            .ledgerExpense
+        case .unknown, .notDetermined:
+            .ledgerAccent
+        }
+    }
+
+    private var notificationStatusActionTitle: String? {
+        switch store.notificationAuthorizationState {
+        case .notDetermined:
+            "开启权限"
+        case .denied:
+            "去设置"
+        case .unknown, .authorized, .provisional, .ephemeral:
+            nil
+        }
+    }
+
+    private func handleNotificationStatusAction() {
+        switch store.notificationAuthorizationState {
+        case .notDetermined:
+            store.setPushEnabled(true)
+        case .denied:
+            store.openNotificationSystemSettings()
+        case .unknown, .authorized, .provisional, .ephemeral:
+            break
+        }
     }
 
     private var serviceCard: some View {

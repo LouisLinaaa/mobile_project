@@ -135,11 +135,13 @@ final class LedgerStore: ObservableObject {
     @Published var entryNavigationRequest: LedgerNavigationRequest?
     @Published private(set) var autoLedgerPendingLaunch: AutoLedgerLaunchPayload?
     @Published private(set) var autoLedgerShortcutStatus = AutoLedgerHandoffStore.loadStatus()
+    @Published private(set) var notificationAuthorizationState: LedgerNotificationAuthorizationState = .unknown
     @Published var appSettings: AppSettings {
         didSet {
             guard appSettings != oldValue else { return }
             schedulePersistAppSettings()
             schedulePersistLedgerState()
+            scheduleNotificationSync()
             if appSettings.monthStartDay != oldValue.monthStartDay {
                 syncWidgetSnapshot()
             }
@@ -149,18 +151,21 @@ final class LedgerStore: ObservableObject {
         didSet {
             schedulePersistLedgerState()
             syncWidgetSnapshot()
+            scheduleNotificationSync()
         }
     }
     @Published private(set) var categoryBudgets: [LedgerCategoryBudget] {
         didSet {
             schedulePersistLedgerState()
             syncWidgetSnapshot()
+            scheduleNotificationSync()
         }
     }
     @Published private(set) var entries: [LedgerEntry] {
         didSet {
             schedulePersistLedgerState()
             syncWidgetSnapshot()
+            scheduleNotificationSync()
         }
     }
     @Published private(set) var books: [LedgerBook] {
@@ -173,6 +178,7 @@ final class LedgerStore: ObservableObject {
         didSet {
             schedulePersistLedgerState()
             syncWidgetSnapshot()
+            scheduleNotificationSync()
         }
     }
     @Published private(set) var accounts: [LedgerAccount] {
@@ -194,8 +200,10 @@ final class LedgerStore: ObservableObject {
     private let localBackupSnapshotKey = "ledger.local.backup.snapshot"
     private let localBackupDateKey = "ledger.local.backup.date"
     private let iCloudBackupSnapshotKey = "ledger.icloud.backup.snapshot"
+    private let notificationService = LedgerNotificationService()
     private var settingsPersistTask: Task<Void, Never>?
     private var statePersistTask: Task<Void, Never>?
+    private var notificationSyncTask: Task<Void, Never>?
     private var iCloudObserver: NSObjectProtocol?
     private let bookIcons = [
         "book.closed.fill",
@@ -235,11 +243,14 @@ final class LedgerStore: ObservableObject {
         refreshICloudBackupSummary()
         syncWidgetSnapshot()
         refreshAutoLedgerShortcutState()
+        refreshNotificationAuthorizationStatus()
+        scheduleNotificationSync(immediate: true)
     }
 
     deinit {
         settingsPersistTask?.cancel()
         statePersistTask?.cancel()
+        notificationSyncTask?.cancel()
         if let iCloudObserver {
             NotificationCenter.default.removeObserver(iCloudObserver)
         }
@@ -612,9 +623,24 @@ final class LedgerStore: ObservableObject {
         autoLedgerShortcutStatus = AutoLedgerHandoffStore.loadStatus()
     }
 
+    func refreshNotificationAuthorizationStatus() {
+        Task { [weak self] in
+            guard let self else { return }
+            let state = await notificationService.authorizationState()
+            guard !Task.isCancelled else { return }
+            notificationAuthorizationState = state
+        }
+    }
+
+    func openNotificationSystemSettings() {
+        notificationService.openSystemSettings()
+    }
+
     func reloadPersistedStateIfAvailable() {
         restorePersistedStateIfAvailable()
         refreshAutoLedgerShortcutState()
+        refreshNotificationAuthorizationStatus()
+        scheduleNotificationSync(immediate: true)
         syncWidgetSnapshot()
     }
 
@@ -927,6 +953,7 @@ final class LedgerStore: ObservableObject {
                 settings.pushBillReview = true
             }
         }
+        scheduleNotificationSync(immediate: true, requestAuthorizationIfNeeded: enabled)
     }
 
     func setPushSubItem(
@@ -954,6 +981,7 @@ final class LedgerStore: ObservableObject {
                 settings.pushFeatureRecommendation ||
                 settings.pushBillReview
         }
+        scheduleNotificationSync(immediate: true, requestAuthorizationIfNeeded: appSettings.pushEnabled)
     }
 
     var isICloudBackupAvailable: Bool {
@@ -1377,6 +1405,71 @@ final class LedgerStore: ObservableObject {
 
         let trimmedNote = draft.note.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmedNote.isEmpty ? category.name.localized : trimmedNote
+    }
+
+    private func scheduleNotificationSync(
+        immediate: Bool = false,
+        requestAuthorizationIfNeeded: Bool = false) {
+        notificationSyncTask?.cancel()
+
+        let delay: UInt64 = immediate ? 0 : 350_000_000
+        notificationSyncTask = Task { [weak self] in
+            if delay > 0 {
+                try? await Task.sleep(nanoseconds: delay)
+            }
+            guard !Task.isCancelled, let self else { return }
+            await self.synchronizeNotifications(requestAuthorizationIfNeeded: requestAuthorizationIfNeeded)
+        }
+    }
+
+    private func synchronizeNotifications(requestAuthorizationIfNeeded: Bool) async {
+        let state = await notificationService.synchronize(
+            preferences: notificationPreferences,
+            budget: notificationBudgetSnapshot,
+            requestAuthorizationIfNeeded: requestAuthorizationIfNeeded)
+        guard !Task.isCancelled else { return }
+        notificationAuthorizationState = state
+    }
+
+    private var notificationPreferences: LedgerNotificationPreferences {
+        var enabledKinds = Set<LedgerNotificationKind>()
+        if appSettings.pushDailyLedger {
+            enabledKinds.insert(.dailyLedger)
+        }
+        if appSettings.pushBudgetReminder {
+            enabledKinds.insert(.budgetReminder)
+        }
+        if appSettings.pushFeatureRecommendation {
+            enabledKinds.insert(.featureRecommendation)
+        }
+        if appSettings.pushBillReview {
+            enabledKinds.insert(.billReview)
+        }
+
+        return LedgerNotificationPreferences(
+            isEnabled: appSettings.pushEnabled,
+            enabledKinds: enabledKinds)
+    }
+
+    private var notificationBudgetSnapshot: LedgerNotificationBudgetSnapshot? {
+        guard let budgetLimit, budgetLimit > 0 else { return nil }
+        let progress = currentMonthBudgetExpense / budgetLimit
+        return LedgerNotificationBudgetSnapshot(
+            bookID: currentBook.id.uuidString,
+            cycleID: notificationCycleID,
+            progress: progress,
+            remainingAmount: currentBudgetRemaining ?? 0,
+            overspentAmount: currentBudgetOverspent)
+    }
+
+    private var notificationCycleID: String {
+        let start = currentStatisticsMonthInterval.start
+        let components = calendar.dateComponents([.year, .month, .day], from: start)
+        return String(
+            format: "%04d-%02d-%02d",
+            components.year ?? 0,
+            components.month ?? 0,
+            components.day ?? 0)
     }
 
     private func syncWidgetSnapshot() {
