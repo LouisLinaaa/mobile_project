@@ -441,11 +441,11 @@ final class LedgerStore: ObservableObject {
     var assistantCardHint: String {
         switch appSettings.assistantReplyStyle {
         case .concise:
-            "简洁模式：我会先给结论，再补充必要信息。"
+            "简洁模式：我会先给结论，再补充必要信息。".localized
         case .balanced:
-            "平衡模式：结论和说明都会保留，阅读节奏更稳。"
+            "平衡模式：结论和说明都会保留，阅读节奏更稳。".localized
         case .detailed:
-            "详细模式：会补充更多上下文与步骤，适合慢慢看。"
+            "详细模式：会补充更多上下文与步骤，适合慢慢看。".localized
         }
     }
 
@@ -1376,7 +1376,7 @@ final class LedgerStore: ObservableObject {
         }
 
         let trimmedNote = draft.note.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmedNote.isEmpty ? category.name : trimmedNote
+        return trimmedNote.isEmpty ? category.name.localized : trimmedNote
     }
 
     private func syncWidgetSnapshot() {
@@ -1392,7 +1392,7 @@ final class LedgerStore: ObservableObject {
             let total = items.reduce(0) { $0 + $1.amount }
             return LedgerWidgetCategorySnapshot(
                 id: first.category.id,
-                name: first.category.name,
+                name: first.category.name.localized,
                 amount: total,
                 tintHex: hexColor(for: first.category.tintStyle))
         }

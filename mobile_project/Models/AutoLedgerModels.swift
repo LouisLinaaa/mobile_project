@@ -5,6 +5,10 @@ enum AutoLedgerCenterTab: String, CaseIterable, Identifiable {
     case voice = "语音记账"
 
     var id: String { rawValue }
+
+    var localizedTitle: String {
+        rawValue.localized
+    }
 }
 
 enum AutoLedgerShortcutSetupState: String, Codable, Equatable {
@@ -17,30 +21,30 @@ enum AutoLedgerShortcutSetupState: String, Codable, Equatable {
     var title: String {
         switch self {
         case .notInstalled:
-            "还没有添加快捷指令"
+            "还没有添加快捷指令".localized
         case .installGuideShown:
-            "已打开安装引导"
+            "已打开安装引导".localized
         case .installedAwaitingValidation:
-            "已添加，待检查动作链"
+            "已添加，待检查动作链".localized
         case .ready:
-            "自动记账已就绪"
+            "自动记账已就绪".localized
         case .lastRunFailed:
-            "最近一次运行失败"
+            "最近一次运行失败".localized
         }
     }
 
     var summary: String {
         switch self {
         case .notInstalled:
-            "先完成快捷指令添加，再继续编辑动作链和绑定触发方式。"
+            "先完成快捷指令添加，再继续编辑动作链和绑定触发方式。".localized
         case .installGuideShown:
-            "系统快捷指令入口已经准备好了。结构搭好后，就可以直接触发自动识别。"
+            "系统快捷指令入口已经准备好了。结构搭好后，就可以直接触发自动识别。".localized
         case .installedAwaitingValidation:
-            "建议先检查动作链是否为“截图 -> 从截图获取图像 -> 自动记账”，再做一次真实验证。"
+            "建议先检查动作链是否为“截图 -> 从截图获取图像 -> 自动记账”，再做一次真实验证。".localized
         case .ready:
-            "快捷指令、动作链和触发方式都已经就位，可以直接开始使用。"
+            "快捷指令、动作链和触发方式都已经就位，可以直接开始使用。".localized
         case .lastRunFailed:
-            "先回到动作链检查和排障，再重新触发一次自动记账。"
+            "先回到动作链检查和排障，再重新触发一次自动记账。".localized
         }
     }
 }
@@ -54,18 +58,18 @@ enum AutoLedgerPreferredTriggerMode: String, CaseIterable, Identifiable, Codable
     var title: String {
         switch self {
         case .assistiveTouch:
-            "辅助触控（小白点）"
+            "辅助触控（小白点）".localized
         case .actionButton:
-            "操作按钮"
+            "操作按钮".localized
         }
     }
 
     var subtitle: String {
         switch self {
         case .assistiveTouch:
-            "适合大多数机型，单击/双击/长按都能绑定。"
+            "适合大多数机型，单击/双击/长按都能绑定。".localized
         case .actionButton:
-            "适合支持操作按钮的机型，按一下即可触发。"
+            "适合支持操作按钮的机型，按一下即可触发。".localized
         }
     }
 }

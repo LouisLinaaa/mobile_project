@@ -452,7 +452,7 @@ struct BudgetManagementView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(summary.category.name)
+                    Text(summary.category.name.localized)
                         .font(.system(size: 18, weight: .bold, design: .rounded))
                         .foregroundStyle(Color.ledgerText)
 
@@ -811,7 +811,7 @@ private struct CategoryBudgetEditorSheet: View {
 
                         Picker("分类", selection: $selectedCategoryID) {
                             ForEach(categories) { category in
-                                Text(category.name).tag(category.id)
+                                Text(category.name.localized).tag(category.id)
                             }
                         }
                         .pickerStyle(.wheel)
@@ -887,7 +887,7 @@ private struct CategoryBudgetEditorSheet: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(category.tint)
 
-            Text(category.name)
+            Text(category.name.localized)
                 .font(.system(size: 16, weight: .semibold, design: .rounded))
                 .foregroundStyle(Color.ledgerText)
         }

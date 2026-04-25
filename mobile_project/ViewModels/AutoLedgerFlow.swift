@@ -928,7 +928,7 @@ final class AutoLedgerViewModel: ObservableObject {
     var shortcutStatusPresentation: AutoLedgerShortcutStatusPresentation {
         if let lastErrorMessage = shortcutStatus.lastErrorMessage, !lastErrorMessage.isEmpty {
             return AutoLedgerShortcutStatusPresentation(
-                title: "最近一次触发失败",
+                title: "最近一次触发失败".localized,
                 detail: lastErrorMessage,
                 tint: "error")
         }
@@ -937,26 +937,41 @@ final class AutoLedgerViewModel: ObservableObject {
            let source = shortcutStatus.lastSource {
             let completionText = if let lastCompletedAt = shortcutStatus.lastCompletedAt,
                                     lastCompletedAt >= lastTriggeredAt {
-                "，已完成一次自动入账"
+                "，已完成一次自动入账".localized
             } else {
-                "，正在完成识别"
+                "，正在完成识别".localized
             }
 
             return AutoLedgerShortcutStatusPresentation(
-                title: "已检测到快捷动作可用",
-                detail: "\(LedgerFormatters.shortTimestamp(lastTriggeredAt)) 通过\(source.displayName)触发\(completionText)",
+                title: "已检测到快捷动作可用".localized,
+                detail: L10n.format(
+                    "%@ 通过%@触发%@",
+                    LedgerFormatters.shortTimestamp(lastTriggeredAt),
+                    source.displayName,
+                    completionText),
                 tint: "success")
         }
 
         return AutoLedgerShortcutStatusPresentation(
-            title: "还没有快捷动作记录",
-            detail: "先在快捷指令里按“截图 -> 从截图获取图像 -> 识别账单”搭好链路，再绑定到辅助触控或操作按钮。",
+            title: "还没有快捷动作记录".localized,
+            detail: "先在快捷指令里按“截图 -> 从截图获取图像 -> 识别账单”搭好链路，再绑定到辅助触控或操作按钮。".localized,
             tint: "idle")
     }
 
     private func makeContext(from store: LedgerStore) -> AutoLedgerParseContext {
         let categories = LedgerKind.allCases.flatMap { kind in
-            store.categories(for: kind).map { "\(kind.rawValue):\($0.name)" }
+            store.categories(for: kind).flatMap { category in
+                let namedCandidates = kind.localizedTitleVariants.flatMap { kindName in
+                    category.localizedNameVariants.map { categoryName in
+                        "\(kindName):\(categoryName)"
+                    }
+                }
+
+                return uniqueStrings(
+                    namedCandidates
+                        + category.localizedNameVariants
+                        + ["\(kind.storageKey):\(category.id)", category.id])
+            }
         }
 
         return AutoLedgerParseContext(
@@ -1001,19 +1016,31 @@ final class AutoLedgerViewModel: ObservableObject {
             return fallbackCategory(from: categories, kind: kind)
         }
 
-        let normalizedHint = normalizedLookupText(hint)
+        let hintCandidates = expandedHintCandidates(from: hint)
+        let normalizedHints = hintCandidates.map(normalizedLookupText)
 
-        if let byID = categories.first(where: { $0.id.caseInsensitiveCompare(hint) == .orderedSame }) {
+        if let byID = categories.first(where: { category in
+            hintCandidates.contains { category.id.caseInsensitiveCompare($0) == .orderedSame }
+        }) {
             return byID
         }
 
-        if let byName = categories.first(where: { $0.name.caseInsensitiveCompare(hint) == .orderedSame }) {
+        if let byName = categories.first(where: { category in
+            category.localizedNameVariants.contains { candidate in
+                hintCandidates.contains { candidate.caseInsensitiveCompare($0) == .orderedSame }
+            }
+        }) {
             return byName
         }
 
-        if let fuzzy = categories.first(where: {
-            let normalizedCategoryName = normalizedLookupText($0.name)
-            return normalizedCategoryName.contains(normalizedHint) || normalizedHint.contains(normalizedCategoryName)
+        if let fuzzy = categories.first(where: { category in
+            category.localizedNameVariants.contains { candidate in
+                let normalizedCategoryName = normalizedLookupText(candidate)
+                return normalizedHints.contains { normalizedHint in
+                    normalizedCategoryName.contains(normalizedHint) || normalizedHint
+                        .contains(normalizedCategoryName)
+                }
+            }
         }) {
             return fuzzy
         }
@@ -1071,6 +1098,16 @@ final class AutoLedgerViewModel: ObservableObject {
         }
 
         return result
+    }
+
+    private func expandedHintCandidates(from hint: String) -> [String] {
+        let trimmedHint = hint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let segments = trimmedHint
+            .split(separator: ":")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        return uniqueStrings([trimmedHint] + segments)
     }
 
     private func normalizedLookupText(_ text: String) -> String {
@@ -1218,7 +1255,7 @@ final class AutoLedgerViewModel: ObservableObject {
             let category = resolvedCategory(from: draft, store: store)
             let note = draft.note.trimmingCharacters(in: .whitespacesAndNewlines)
             let merchant = draft.merchant.trimmingCharacters(in: .whitespacesAndNewlines)
-            let title = merchant.isEmpty ? (note.isEmpty ? category.name : note) : merchant
+            let title = merchant.isEmpty ? (note.isEmpty ? category.name.localized : note) : merchant
 
             let createdEntry = store.addEntry(
                 bookID: draft.bookID ?? store.currentBook.id,
@@ -1240,7 +1277,7 @@ final class AutoLedgerViewModel: ObservableObject {
             if !merchant.isEmpty {
                 savedSummary += " · \(merchant)"
             } else {
-                savedSummary += " · \(category.name)"
+                savedSummary += " · \(category.name.localized)"
             }
 
             if draft.recognizedEntryCount > 1 {
@@ -1278,7 +1315,7 @@ final class AutoLedgerViewModel: ObservableObject {
         let category = resolvedCategory(from: draft, store: store)
         let note = draft.note.trimmingCharacters(in: .whitespacesAndNewlines)
         let merchant = draft.merchant.trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = merchant.isEmpty ? (note.isEmpty ? category.name : note) : merchant
+        let title = merchant.isEmpty ? (note.isEmpty ? category.name.localized : note) : merchant
 
         return store.addEntry(
             bookID: draft.bookID ?? store.currentBook.id,
@@ -1308,7 +1345,7 @@ final class AutoLedgerViewModel: ObservableObject {
         let paymentMethod = mapPaymentMethod(from: entry.paymentMethod, store: store)
         let merchant = (entry.merchant ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let note = (entry.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = merchant.isEmpty ? (note.isEmpty ? category.name : note) : merchant
+        let title = merchant.isEmpty ? (note.isEmpty ? category.name.localized : note) : merchant
 
         return store.addEntry(
             kind: kind,

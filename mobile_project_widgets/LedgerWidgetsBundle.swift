@@ -58,8 +58,7 @@ private struct LedgerWidgetSnapshot: Codable {
         autoLedgerPendingCount: 1,
         autoLedgerPostedCount: 0,
         autoLedgerFailedCount: 0,
-        autoLedgerUpdatedAt: Date()
-    )
+        autoLedgerUpdatedAt: Date())
 }
 
 private enum LedgerWidgetStore {
@@ -96,7 +95,8 @@ private struct LedgerTimelineProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<LedgerWidgetEntry>) -> Void) {
         let now = Date()
         let entry = LedgerWidgetEntry(date: now, snapshot: LedgerWidgetStore.load())
-        let nextRefresh = Calendar.current.date(byAdding: .minute, value: 30, to: now) ?? now.addingTimeInterval(30 * 60)
+        let nextRefresh = Calendar.current.date(byAdding: .minute, value: 30, to: now) ?? now
+            .addingTimeInterval(30 * 60)
         completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
     }
 }
@@ -156,7 +156,7 @@ private struct TodayExpenseWidgetView: View {
                             Circle()
                                 .fill(Color(hex: item.tintHex))
                                 .frame(width: 7, height: 7)
-                            Text(item.name)
+                            Text(item.name.localized)
                                 .font(.system(size: 13, weight: .medium, design: .rounded))
                                 .foregroundStyle(Color.widgetMuted)
                                 .lineLimit(1)
@@ -298,7 +298,7 @@ private struct ActionChip: View {
             VStack(spacing: 5) {
                 Image(systemName: icon)
                     .font(.system(size: 15, weight: .semibold))
-                Text(title)
+                Text(title.localized)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -359,7 +359,7 @@ private struct MetricCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title)
+            Text(title.localized)
                 .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundStyle(Color.widgetMuted)
             Text(WidgetFormatters.currency(value))
@@ -440,8 +440,7 @@ private struct WidgetBackground: View {
         LinearGradient(
             colors: [Color.white, Color.widgetAccentSoft.opacity(0.45)],
             startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+            endPoint: .bottomTrailing)
     }
 }
 

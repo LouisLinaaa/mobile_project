@@ -66,7 +66,7 @@ extension View {
 }
 
 enum LedgerFormatters {
-    static let locale = Locale(identifier: "zh_Hans_CN")
+    static let locale = Locale.autoupdatingCurrent
 
     private static let currencyFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
@@ -82,28 +82,28 @@ enum LedgerFormatters {
     private static let monthFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = locale
-        formatter.dateFormat = "M月"
+        formatter.setLocalizedDateFormatFromTemplate("MMM")
         return formatter
     }()
 
     private static let monthDrawerFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = locale
-        formatter.dateFormat = "yyyy年MM月"
+        formatter.setLocalizedDateFormatFromTemplate("yMMMM")
         return formatter
     }()
 
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = locale
-        formatter.dateFormat = "M月d日"
+        formatter.setLocalizedDateFormatFromTemplate("Md")
         return formatter
     }()
 
     private static let weekdayFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = locale
-        formatter.dateFormat = "EEE"
+        formatter.setLocalizedDateFormatFromTemplate("EEE")
         return formatter
     }()
 
@@ -117,14 +117,14 @@ enum LedgerFormatters {
     private static let bookDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = locale
-        formatter.dateFormat = "yyyy.MM.dd"
+        formatter.setLocalizedDateFormatFromTemplate("yyyyMMdd")
         return formatter
     }()
 
     private static let historyTitleFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = locale
-        formatter.dateFormat = "M月d日 EEEE"
+        formatter.setLocalizedDateFormatFromTemplate("MdEEEE")
         return formatter
     }()
 
@@ -141,7 +141,7 @@ enum LedgerFormatters {
     }
 
     static func todayHeadline(for date: Date) -> String {
-        "今天 \(dateFormatter.string(from: date)) (\(weekdayFormatter.string(from: date)))"
+        L10n.format("今天 %@ (%@)", dateFormatter.string(from: date), weekdayFormatter.string(from: date))
     }
 
     static func entryTime(for date: Date) -> String {
@@ -153,7 +153,7 @@ enum LedgerFormatters {
     }
 
     static func shortTimestamp(_ date: Date) -> String {
-        "\(bookDate(date)) \(entryTime(for: date))"
+        L10n.format("%@ %@", bookDate(date), entryTime(for: date))
     }
 
     static func historyTitle(for date: Date) -> String {

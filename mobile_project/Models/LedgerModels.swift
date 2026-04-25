@@ -15,6 +15,14 @@ enum LedgerKind: String, CaseIterable, Identifiable, Codable {
             "income"
         }
     }
+
+    var localizedTitle: String {
+        rawValue.localized
+    }
+
+    var localizedTitleVariants: [String] {
+        rawValue.localizedVariants
+    }
 }
 
 enum LedgerTintStyle: String, CaseIterable, Identifiable, Codable {
@@ -50,19 +58,19 @@ enum LedgerTintStyle: String, CaseIterable, Identifiable, Codable {
     var title: String {
         switch self {
         case .accent:
-            "蓝"
+            "蓝".localized
         case .gold:
-            "金"
+            "金".localized
         case .mint:
-            "青"
+            "青".localized
         case .lavender:
-            "紫"
+            "紫".localized
         case .coral:
-            "橙"
+            "橙".localized
         case .expense:
-            "红"
+            "红".localized
         case .income:
-            "绿"
+            "绿".localized
         }
     }
 }
@@ -75,6 +83,10 @@ struct LedgerCategory: Identifiable, Hashable, Codable {
     let kind: LedgerKind
 
     var tint: Color { tintStyle.color }
+
+    var localizedNameVariants: [String] {
+        name.localizedVariants
+    }
 
     static func == (lhs: LedgerCategory, rhs: LedgerCategory) -> Bool {
         lhs.id == rhs.id
@@ -121,30 +133,30 @@ enum LedgerAccountGroup: String, CaseIterable, Identifiable, Codable {
     var title: String {
         switch self {
         case .asset:
-            "资金账户"
+            "资金账户".localized
         case .credit:
-            "信用账户"
+            "信用账户".localized
         case .recharge:
-            "充值账户"
+            "充值账户".localized
         case .investment:
-            "理财账户"
+            "理财账户".localized
         case .loan:
-            "借贷账户"
+            "借贷账户".localized
         }
     }
 
     var subtitle: String {
         switch self {
         case .asset:
-            "资产"
+            "资产".localized
         case .credit:
-            "负债"
+            "负债".localized
         case .recharge:
-            "资产"
+            "资产".localized
         case .investment:
-            "资产"
+            "资产".localized
         case .loan:
-            "往来"
+            "往来".localized
         }
     }
 
@@ -401,6 +413,10 @@ enum LedgerHistoryScope: String, CaseIterable, Identifiable, Codable {
     case allBooks = "全部账本"
 
     var id: String { rawValue }
+
+    var localizedTitle: String {
+        rawValue.localized
+    }
 }
 
 struct LedgerHistoryPresentation: Equatable {
@@ -453,11 +469,11 @@ enum AssistantReplyStyle: String, CaseIterable, Identifiable, Codable {
     var title: String {
         switch self {
         case .concise:
-            "简洁"
+            "简洁".localized
         case .balanced:
-            "平衡"
+            "平衡".localized
         case .detailed:
-            "详细"
+            "详细".localized
         }
     }
 }
@@ -529,7 +545,7 @@ struct AppSettings: Codable, Equatable {
     init() {}
 
     var monthStartDayLabel: String {
-        "每月\(monthStartDay)日"
+        L10n.format("每月%d日", monthStartDay)
     }
 
     private enum CodingKeys: String, CodingKey {

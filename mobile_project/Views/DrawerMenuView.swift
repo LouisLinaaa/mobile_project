@@ -109,7 +109,7 @@ struct DrawerMenuView: View {
                             }
                         }
 
-                        Text(item.title)
+                        Text(item.title.localized)
                             .font(.system(size: 16, weight: .medium, design: .rounded))
                             .foregroundStyle(Color.ledgerText)
                             .lineLimit(1)
@@ -205,7 +205,7 @@ private struct ShortcutSectionCard: View {
                                     .foregroundStyle(item.accent)
                             }
 
-                            Text(item.title)
+                            Text(item.title.localized)
                                 .font(.system(size: 12, weight: .medium, design: .rounded))
                                 .foregroundStyle(Color.ledgerText)
                                 .multilineTextAlignment(.center)

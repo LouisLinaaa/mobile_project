@@ -241,7 +241,7 @@ struct HomeView: View {
             HStack(spacing: 6) {
                 Image(systemName: icon)
                     .font(.system(size: 12, weight: .semibold))
-                Text(tab.rawValue)
+                Text(tab.rawValue.localized)
                     .font(.system(size: 14, weight: .bold, design: .rounded))
             }
             .foregroundStyle(isActive ? Color.ledgerText : Color.ledgerMuted)
@@ -791,7 +791,7 @@ private struct CalendarStatItem: View {
             Text(value)
                 .font(.system(size: 18, weight: .bold, design: .rounded))
                 .foregroundStyle(Color.ledgerText)
-            Text(title)
+            Text(title.localized)
                 .font(.system(size: 13, weight: .medium, design: .rounded))
                 .foregroundStyle(Color.ledgerMuted)
         }
@@ -833,7 +833,7 @@ private struct SummaryNumber: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
+            Text(title.localized)
                 .font(.system(size: 15, weight: .medium, design: .rounded))
                 .foregroundStyle(Color.ledgerMuted)
 
@@ -936,7 +936,7 @@ struct TransactionRow: View {
                     .foregroundStyle(Color.ledgerText)
 
                 Text(
-                    "\(isSensitiveVisible ? entry.paymentMethod : "支付方式已隐藏") · \(LedgerFormatters.entryTime(for: entry.date))")
+                    "\(isSensitiveVisible ? entry.paymentMethod.localized : "支付方式已隐藏".localized) · \(LedgerFormatters.entryTime(for: entry.date))")
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(Color.ledgerMuted)
             }
@@ -1095,13 +1095,13 @@ struct LedgerEntryDetailSheet: View {
 
             Divider().padding(.leading, 54)
 
-            detailRow(label: "类型", value: latestEntry.kind.rawValue) {
+            detailRow(label: "类型", value: latestEntry.kind.localizedTitle) {
                 activeEditor = .kind
             }
 
             Divider().padding(.leading, 54)
 
-            detailRow(label: "分类", value: latestEntry.category.name, valueColor: latestEntry.category.tint) {
+            detailRow(label: "分类", value: latestEntry.category.name.localized, valueColor: latestEntry.category.tint) {
                 activeEditor = .category
             }
         }
@@ -1245,7 +1245,7 @@ struct LedgerEntryDetailSheet: View {
         action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Text(label)
+                Text(label.localized)
                     .font(.system(size: 16, weight: .medium, design: .rounded))
                     .foregroundStyle(Color.ledgerMuted)
                     .frame(width: 84, alignment: .leading)
@@ -1271,7 +1271,7 @@ struct LedgerEntryDetailSheet: View {
 
     private func toggleRow(label: String, isOn: Binding<Bool>, disabled: Bool = false) -> some View {
         HStack(spacing: 12) {
-            Text(label)
+            Text(label.localized)
                 .font(.system(size: 16, weight: .medium, design: .rounded))
                 .foregroundStyle(Color.ledgerMuted)
                 .frame(width: 84, alignment: .leading)
@@ -1556,7 +1556,7 @@ private struct LedgerAccountPickerSheet: View {
                             paymentMethodText = account.name
                         } label: {
                             HStack {
-                                Text(account.name)
+                                Text(account.name.localized)
                                 Spacer()
                                 if draftAccountID == account.id {
                                     Image(systemName: "checkmark")
@@ -1608,7 +1608,7 @@ private struct LedgerKindPickerSheet: View {
             Form {
                 Picker("类型", selection: $kind) {
                     ForEach(LedgerKind.allCases) { item in
-                        Text(item.rawValue).tag(item)
+                        Text(item.localizedTitle).tag(item)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -1654,7 +1654,7 @@ private struct LedgerCategoryPickerSheet: View {
                         draftCategoryID = category.id
                     } label: {
                         HStack {
-                            Label(category.name, systemImage: category.icon)
+                            Label(category.name.localized, systemImage: category.icon)
                                 .foregroundStyle(category.tint, Color.ledgerText)
                             Spacer()
                             if draftCategoryID == category.id {
