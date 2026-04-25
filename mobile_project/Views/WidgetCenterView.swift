@@ -152,7 +152,7 @@ struct WidgetCenterView: View {
                     .foregroundStyle(Color.ledgerMuted)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.8))
+                    .background(Color.ledgerElevated.opacity(0.8))
                     .clipShape(Capsule())
             }
 
@@ -174,7 +174,7 @@ struct WidgetCenterView: View {
             RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [Color.white, kind.accent.opacity(0.22)],
+                        colors: [Color.ledgerSurface, kind.accent.opacity(0.22)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing))
                 .shadow(color: kind.accent.opacity(0.18), radius: 16, x: 0, y: 10))
@@ -266,7 +266,7 @@ struct WidgetCenterView: View {
         .foregroundStyle(Color.ledgerText)
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(Color.white.opacity(0.85))
+        .background(Color.ledgerElevated.opacity(0.85))
         .clipShape(Capsule())
     }
 
@@ -294,7 +294,7 @@ struct WidgetCenterView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(Color.white.opacity(0.82))
+        .background(Color.ledgerElevated.opacity(0.82))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
@@ -322,7 +322,7 @@ struct WidgetCenterView: View {
             .foregroundStyle(color)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(Color.white.opacity(0.86))
+            .background(Color.ledgerElevated.opacity(0.86))
             .clipShape(Capsule())
     }
 
@@ -365,7 +365,7 @@ struct WidgetCenterView: View {
                     .padding(14)
                     .background(
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(selectedTemplate == kind ? kind.accent.opacity(0.14) : Color.white))
+                            .fill(selectedTemplate == kind ? kind.accent.opacity(0.14) : Color.ledgerSurface))
                 }
                 .buttonStyle(.plain)
             }

@@ -532,7 +532,7 @@ struct AIBillingView: View {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 26))
                     .foregroundStyle(Color.ledgerMuted)
-                    .background(Circle().fill(.white))
+                    .background(Circle().fill(Color.ledgerSurface))
             }
             .buttonStyle(.plain)
             .padding(8)
@@ -780,7 +780,7 @@ struct AIBillingView: View {
             }
             .buttonStyle(LedgerResponsiveButtonStyle())
         }
-        .background(.white)
+        .background(Color.ledgerElevated)
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .shadow(color: Color.black.opacity(0.05), radius: 16, x: 0, y: 8)
     }

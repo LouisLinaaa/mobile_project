@@ -1,29 +1,56 @@
 import SwiftUI
+import UIKit
 
 extension Color {
-    static let ledgerCanvas = Color(red: 0.98, green: 0.98, blue: 0.99)
-    static let ledgerCard = Color(red: 0.95, green: 0.97, blue: 1.00)
-    static let ledgerAccent = Color(red: 0.31, green: 0.51, blue: 0.98)
-    static let ledgerAccentSoft = Color(red: 0.85, green: 0.90, blue: 1.00)
-    static let ledgerAccentMuted = Color(red: 0.92, green: 0.95, blue: 1.00)
-    static let ledgerText = Color(red: 0.12, green: 0.14, blue: 0.18)
-    static let ledgerMuted = Color(red: 0.48, green: 0.52, blue: 0.60)
-    static let ledgerDivider = Color(red: 0.90, green: 0.92, blue: 0.96)
-    static let ledgerExpense = Color(red: 0.96, green: 0.48, blue: 0.38)
-    static let ledgerIncome = Color(red: 0.29, green: 0.68, blue: 0.52)
-    static let ledgerGold = Color(red: 0.96, green: 0.76, blue: 0.35)
-    static let ledgerMint = Color(red: 0.46, green: 0.79, blue: 0.76)
-    static let ledgerLavender = Color(red: 0.67, green: 0.63, blue: 0.97)
-    static let ledgerCoral = Color(red: 0.95, green: 0.63, blue: 0.58)
+    static let ledgerCanvas = ledgerAdaptive(light: (0.97, 0.98, 0.99), dark: (0.05, 0.06, 0.08))
+    static let ledgerSurface = ledgerAdaptive(light: (1.00, 1.00, 1.00), dark: (0.11, 0.13, 0.17))
+    static let ledgerCard = ledgerAdaptive(light: (0.94, 0.97, 1.00), dark: (0.13, 0.16, 0.22))
+    static let ledgerElevated = ledgerAdaptive(light: (1.00, 1.00, 1.00), dark: (0.15, 0.17, 0.22))
+    static let ledgerAccent = ledgerAdaptive(light: (0.23, 0.43, 0.92), dark: (0.48, 0.64, 1.00))
+    static let ledgerAccentSoft = ledgerAdaptive(light: (0.84, 0.90, 1.00), dark: (0.14, 0.22, 0.40))
+    static let ledgerAccentMuted = ledgerAdaptive(light: (0.91, 0.95, 1.00), dark: (0.12, 0.17, 0.27))
+    static let ledgerText = ledgerAdaptive(light: (0.11, 0.13, 0.17), dark: (0.93, 0.95, 0.98))
+    static let ledgerMuted = ledgerAdaptive(light: (0.45, 0.49, 0.57), dark: (0.66, 0.70, 0.78))
+    static let ledgerDivider = ledgerAdaptive(light: (0.88, 0.91, 0.95), dark: (0.24, 0.28, 0.36))
+    static let ledgerCardStroke = ledgerAdaptive(light: (0.90, 0.93, 0.97), dark: (0.22, 0.27, 0.36))
+    static let ledgerScrim = ledgerAdaptive(light: (0.00, 0.00, 0.00), dark: (0.00, 0.00, 0.00))
+    static let ledgerExpense = ledgerAdaptive(light: (0.90, 0.32, 0.27), dark: (1.00, 0.55, 0.49))
+    static let ledgerIncome = ledgerAdaptive(light: (0.20, 0.60, 0.43), dark: (0.43, 0.82, 0.64))
+    static let ledgerGold = ledgerAdaptive(light: (0.84, 0.56, 0.13), dark: (1.00, 0.78, 0.35))
+    static let ledgerMint = ledgerAdaptive(light: (0.28, 0.66, 0.62), dark: (0.53, 0.86, 0.82))
+    static let ledgerLavender = ledgerAdaptive(light: (0.56, 0.50, 0.93), dark: (0.72, 0.68, 1.00))
+    static let ledgerCoral = ledgerAdaptive(light: (0.88, 0.45, 0.40), dark: (1.00, 0.66, 0.61))
+
+    private static func ledgerAdaptive(
+        light: (Double, Double, Double),
+        dark: (Double, Double, Double)) -> Color {
+        Color(UIColor { trait in
+            let value = trait.userInterfaceStyle == .dark ? dark : light
+            return UIColor(
+                red: CGFloat(value.0),
+                green: CGFloat(value.1),
+                blue: CGFloat(value.2),
+                alpha: 1)
+        })
+    }
 }
 
 struct LedgerCardModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
     func body(content: Content) -> some View {
         content
             .background(
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(.white)
-                    .shadow(color: Color.black.opacity(0.04), radius: 18, x: 0, y: 10))
+                    .fill(Color.ledgerSurface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .stroke(Color.ledgerCardStroke, lineWidth: 1))
+                    .shadow(
+                        color: Color.black.opacity(colorScheme == .dark ? 0.22 : 0.05),
+                        radius: colorScheme == .dark ? 10 : 18,
+                        x: 0,
+                        y: colorScheme == .dark ? 4 : 10))
     }
 }
 
@@ -38,6 +65,8 @@ struct LedgerResponsiveButtonStyle: ButtonStyle {
 }
 
 struct LedgerToolbarBackButton: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let action: () -> Void
 
     var body: some View {
@@ -46,9 +75,10 @@ struct LedgerToolbarBackButton: View {
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(Color.ledgerText)
                 .frame(width: 44, height: 44)
-                .background(.white.opacity(0.92))
+                .background(Color.ledgerElevated.opacity(colorScheme == .dark ? 0.88 : 0.94))
                 .clipShape(Circle())
-                .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 4)
+                .overlay(Circle().stroke(Color.ledgerCardStroke, lineWidth: 1))
+                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.18 : 0.04), radius: 8, x: 0, y: 4)
         }
         .buttonStyle(LedgerResponsiveButtonStyle())
     }

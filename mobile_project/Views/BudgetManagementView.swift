@@ -296,7 +296,7 @@ struct BudgetManagementView: View {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [Color.white, Color.ledgerCard],
+                        colors: [Color.ledgerSurface, Color.ledgerCard],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing))
                 .shadow(color: Color.ledgerAccent.opacity(0.08), radius: 24, x: 0, y: 14))
