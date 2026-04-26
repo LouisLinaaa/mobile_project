@@ -563,6 +563,51 @@ private enum AutoLedgerLocalRecognizer {
     }
 }
 
+enum AutoLedgerModelResponseParser {
+    static func parseEnvelope(from messageContent: String) -> AutoLedgerParseEnvelope? {
+        let trimmed = sanitize(messageContent)
+        guard let data = trimmed.data(using: .utf8) else { return nil }
+
+        if let parsed = try? JSONDecoder().decode(AutoLedgerParseEnvelope.self, from: data) {
+            return parsed
+        }
+
+        if let wrapped = try? JSONDecoder().decode(AutoLedgerOpenAIEnvelopeWrapper.self, from: data) {
+            return wrapped.result
+        }
+
+        if let wrapped = try? JSONDecoder().decode(AutoLedgerOpenAIEntryWrapper.self, from: data) {
+            return AutoLedgerParseEnvelope(
+                entries: [wrapped.result],
+                recognizedEntryCount: wrapped.result.recognizedEntryCount,
+                primaryIndex: 0)
+        }
+
+        if let parsed = try? JSONDecoder().decode(AutoLedgerParseEntry.self, from: data) {
+            return AutoLedgerParseEnvelope(
+                entries: [parsed],
+                recognizedEntryCount: parsed.recognizedEntryCount,
+                primaryIndex: 0)
+        }
+
+        return nil
+    }
+
+    private static func sanitize(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard trimmed.hasPrefix("```") else { return trimmed }
+
+        let lines = trimmed.components(separatedBy: .newlines)
+        let stripped = lines.filter { line in
+            let cleaned = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            return cleaned != "```" && cleaned != "```json"
+        }
+
+        return stripped.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 final class GatewayAutoLedgerService: AutoLedgerServiceProtocol {
     private let configuration: AutoLedgerOpenAIConfiguration
     let recognitionEngine: AutoLedgerRecognitionEngine = .gateway
@@ -623,7 +668,7 @@ final class GatewayAutoLedgerService: AutoLedgerServiceProtocol {
 
         if let decoded = try? JSONDecoder().decode(AutoLedgerOpenAIChatResponse.self, from: data),
            let messageContent = decoded.choices.first?.message.content,
-           let result = parseOpenAIResult(from: messageContent) {
+           let result = AutoLedgerModelResponseParser.parseEnvelope(from: messageContent) {
             AutoLedgerHandoffStore.saveDebugSnapshot(
                 AutoLedgerDebugSnapshot(
                     timestamp: Date(),
@@ -666,34 +711,95 @@ final class GatewayAutoLedgerService: AutoLedgerServiceProtocol {
                 errorMessage: AutoLedgerServiceError.invalidResponse.localizedDescription))
         throw AutoLedgerServiceError.invalidResponse
     }
+}
 
-    private func parseOpenAIResult(from messageContent: String) -> AutoLedgerParseEnvelope? {
-        let trimmed = messageContent.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let data = trimmed.data(using: .utf8) else { return nil }
+enum VoiceLedgerServiceError: LocalizedError {
+    case invalidResponse
+    case networkFailure(Int)
+    case streamFailure
 
-        if let parsed = try? JSONDecoder().decode(AutoLedgerParseEnvelope.self, from: data) {
-            return parsed
+    var errorDescription: String? {
+        switch self {
+        case .invalidResponse:
+            "语音模型返回数据格式不正确，请稍后重试。"
+        case .networkFailure(let status):
+            "语音模型请求失败（\(status)），请检查后重试。"
+        case .streamFailure:
+            "语音模型流式返回中断，请稍后重试。"
+        }
+    }
+}
+
+protocol VoiceLedgerServiceProtocol {
+    func parseVoice(_ request: VoiceLedgerParseRequest) async throws -> AutoLedgerParseEnvelope
+}
+
+struct VoiceLedgerStreamChunk: Decodable {
+    let choices: [VoiceLedgerStreamChoice]
+}
+
+struct VoiceLedgerStreamChoice: Decodable {
+    let delta: VoiceLedgerStreamDelta
+}
+
+struct VoiceLedgerStreamDelta: Decodable {
+    let content: String?
+}
+
+final class VoiceLedgerGatewayService: VoiceLedgerServiceProtocol {
+    private let configuration: VoiceLedgerAIConfiguration
+
+    init(configuration: VoiceLedgerAIConfiguration) {
+        self.configuration = configuration
+    }
+
+    func parseVoice(_ request: VoiceLedgerParseRequest) async throws -> AutoLedgerParseEnvelope {
+        var urlRequest = URLRequest(url: configuration.endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.addValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if let apiKey = configuration.apiKey, !apiKey.isEmpty {
+            urlRequest.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
 
-        if let wrapped = try? JSONDecoder().decode(AutoLedgerOpenAIEnvelopeWrapper.self, from: data) {
-            return wrapped.result
+        let payload = configuration.makeRequestBody(for: request)
+        urlRequest.httpBody = try JSONEncoder().encode(payload)
+
+        let (bytes, response) = try await URLSession.shared.bytes(for: urlRequest)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw VoiceLedgerServiceError.invalidResponse
         }
 
-        if let wrapped = try? JSONDecoder().decode(AutoLedgerOpenAIEntryWrapper.self, from: data) {
-            return AutoLedgerParseEnvelope(
-                entries: [wrapped.result],
-                recognizedEntryCount: wrapped.result.recognizedEntryCount,
-                primaryIndex: 0)
+        guard (200..<300).contains(http.statusCode) else {
+            throw VoiceLedgerServiceError.networkFailure(http.statusCode)
         }
 
-        if let parsed = try? JSONDecoder().decode(AutoLedgerParseEntry.self, from: data) {
-            return AutoLedgerParseEnvelope(
-                entries: [parsed],
-                recognizedEntryCount: parsed.recognizedEntryCount,
-                primaryIndex: 0)
+        var streamedContent = ""
+
+        do {
+            for try await line in bytes.lines {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard trimmed.hasPrefix("data:") else { continue }
+
+                let payload = trimmed.dropFirst(5).trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !payload.isEmpty, payload != "[DONE]" else { continue }
+                guard let data = payload.data(using: .utf8) else { continue }
+
+                if let chunk = try? JSONDecoder().decode(VoiceLedgerStreamChunk.self, from: data),
+                   let content = chunk.choices.first?.delta.content {
+                    streamedContent.append(content)
+                }
+            }
+        } catch {
+            throw VoiceLedgerServiceError.streamFailure
         }
 
-        return nil
+        guard let result = AutoLedgerModelResponseParser.parseEnvelope(from: streamedContent) else {
+            throw VoiceLedgerServiceError.invalidResponse
+        }
+
+        return result
     }
 }
 
