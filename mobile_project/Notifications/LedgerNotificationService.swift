@@ -93,6 +93,9 @@ final class LedgerNotificationService {
         budget: LedgerNotificationBudgetSnapshot?,
         requestAuthorizationIfNeeded: Bool = false) async -> LedgerNotificationAuthorizationState {
         guard preferences.isEnabled else {
+            if let budget {
+                clearLastBudgetReminderStage(for: budget)
+            }
             await cancelManagedNotifications()
             return await authorizationState()
         }
@@ -152,6 +155,10 @@ final class LedgerNotificationService {
     }
 
     private func scheduleImmediateNotifications(from plan: [LedgerNotificationPlanItem]) async {
+        if plan.contains(where: { $0.kind == .budgetReminder && $0.delivery == .immediate }) {
+            await cancelPendingBudgetReminderNotifications()
+        }
+
         for item in plan where item.delivery == .immediate {
             await schedule(item)
         }
@@ -220,6 +227,13 @@ final class LedgerNotificationService {
                         .filter { $0.hasPrefix(LedgerNotificationPlanner.managedIdentifierPrefix) })
             }
         }
+    }
+
+    private func cancelPendingBudgetReminderNotifications() async {
+        let pendingIdentifiers = await pendingManagedNotificationIdentifiers()
+            .filter { $0.hasPrefix("\(LedgerNotificationPlanner.managedIdentifierPrefix)budget-") }
+        guard !pendingIdentifiers.isEmpty else { return }
+        center.removePendingNotificationRequests(withIdentifiers: pendingIdentifiers)
     }
 
     private func lastBudgetReminderStage(for budget: LedgerNotificationBudgetSnapshot) -> LedgerBudgetReminderStage? {

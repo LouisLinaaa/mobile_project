@@ -1,12 +1,7 @@
-import Foundation
-
-func makeDate(_ text: String) -> Date {
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime]
-    guard let date = formatter.date(from: text) else {
-        fatalError("Invalid date fixture: \(text)")
+func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
+    guard condition() else {
+        fatalError(message)
     }
-    return date
 }
 
 @main
@@ -26,35 +21,40 @@ struct NotificationPlannerCheck {
         let plan = LedgerNotificationPlanner.makePlan(
             preferences: enabledPreferences,
             budget: budgetSnapshot,
-            lastBudgetReminderStage: nil,
-            now: makeDate("2026-04-25T12:00:00Z"))
+            lastBudgetReminderStage: nil)
 
-        assert(plan.contains { $0.kind == .dailyLedger && $0.delivery == .daily(hour: 21, minute: 0) })
-        assert(plan.contains { $0.kind == .featureRecommendation && $0.delivery == .weekly(
+        expect(
+            plan.contains { $0.kind == .dailyLedger && $0.delivery == .daily(hour: 21, minute: 0) },
+            "Expected a daily ledger notification plan")
+        expect(plan.contains { $0.kind == .featureRecommendation && $0.delivery == .weekly(
             weekday: 2,
             hour: 10,
-            minute: 0) })
-        assert(plan.contains { $0.kind == .billReview && $0.delivery == .monthly(day: 1, hour: 20, minute: 0) })
-        assert(plan
-            .contains { $0.kind == .budgetReminder && $0.delivery == .immediate && $0.budgetStage == .approaching })
+            minute: 0) }, "Expected a weekly feature recommendation notification plan")
+        expect(
+            plan.contains { $0.kind == .billReview && $0.delivery == .monthly(day: 1, hour: 20, minute: 0) },
+            "Expected a monthly bill review notification plan")
+        expect(
+            plan
+                .contains { $0.kind == .budgetReminder && $0.delivery == .immediate && $0.budgetStage == .approaching },
+            "Expected an immediate approaching-budget notification plan")
 
         let dedupedBudgetPlan = LedgerNotificationPlanner.makePlan(
             preferences: enabledPreferences,
             budget: budgetSnapshot,
-            lastBudgetReminderStage: .approaching,
-            now: makeDate("2026-04-25T12:00:00Z"))
+            lastBudgetReminderStage: .approaching)
 
-        assert(!dedupedBudgetPlan.contains { $0.kind == .budgetReminder && $0.delivery == .immediate })
+        expect(
+            !dedupedBudgetPlan.contains { $0.kind == .budgetReminder && $0.delivery == .immediate },
+            "Expected budget reminders to be deduped after approaching stage was already sent")
 
         let disabledPlan = LedgerNotificationPlanner.makePlan(
             preferences: LedgerNotificationPreferences(
                 isEnabled: false,
                 enabledKinds: Set(LedgerNotificationKind.allCases)),
             budget: budgetSnapshot,
-            lastBudgetReminderStage: nil,
-            now: makeDate("2026-04-25T12:00:00Z"))
+            lastBudgetReminderStage: nil)
 
-        assert(disabledPlan.isEmpty)
+        expect(disabledPlan.isEmpty, "Expected disabled notification preferences to produce no plans")
 
         print("notification planner checks passed")
     }

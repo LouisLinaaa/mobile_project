@@ -47,8 +47,7 @@ enum LedgerNotificationPlanner {
     static func makePlan(
         preferences: LedgerNotificationPreferences,
         budget: LedgerNotificationBudgetSnapshot?,
-        lastBudgetReminderStage: LedgerBudgetReminderStage?,
-        now _: Date = Date()) -> [LedgerNotificationPlanItem] {
+        lastBudgetReminderStage: LedgerBudgetReminderStage?) -> [LedgerNotificationPlanItem] {
         guard preferences.isEnabled else { return [] }
 
         var plan: [LedgerNotificationPlanItem] = []
