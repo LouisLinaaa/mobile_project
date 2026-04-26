@@ -32,6 +32,8 @@
 		A00000000000000000000065 /* LedgerWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000006C /* LedgerWidgetsBundle.swift */; };
 		A00000000000000000000066 /* mobile_project_widgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A0000000000000000000006B /* mobile_project_widgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A00000000000000000000067 /* AutoLedgerLLM.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000091 /* AutoLedgerLLM.swift */; };
+		A000000000000000000000A0 /* LedgerNotificationPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A2 /* LedgerNotificationPlanner.swift */; };
+		A000000000000000000000A1 /* LedgerNotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A3 /* LedgerNotificationService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -88,6 +90,8 @@
 		A00000000000000000000093 /* LocalizationSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationSupport.swift; sourceTree = "<group>"; };
 		A00000000000000000000099 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A0000000000000000000009A /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		A000000000000000000000A2 /* LedgerNotificationPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LedgerNotificationPlanner.swift; sourceTree = "<group>"; };
+		A000000000000000000000A3 /* LedgerNotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LedgerNotificationService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -139,6 +143,7 @@
 				A0000000000000000000006F /* Info.plist */,
 				A0000000000000000000006D /* mobile_project.entitlements */,
 				A00000000000000000000033 /* Models */,
+				A000000000000000000000A4 /* Notifications */,
 				A00000000000000000000036 /* AppShortcuts */,
 				A00000000000000000000034 /* ViewModels */,
 				A00000000000000000000035 /* Views */,
@@ -163,6 +168,15 @@
 				A00000000000000000000019 /* AutoLedgerModels.swift */,
 			);
 			path = Models;
+			sourceTree = "<group>";
+		};
+		A000000000000000000000A4 /* Notifications */ = {
+			isa = PBXGroup;
+			children = (
+				A000000000000000000000A2 /* LedgerNotificationPlanner.swift */,
+				A000000000000000000000A3 /* LedgerNotificationService.swift */,
+			);
+			path = Notifications;
 			sourceTree = "<group>";
 		};
 		A00000000000000000000034 /* ViewModels */ = {
@@ -332,6 +346,8 @@
 			files = (
 				A00000000000000000000001 /* MobileProjectApp.swift in Sources */,
 				A00000000000000000000092 /* LocalizationSupport.swift in Sources */,
+				A000000000000000000000A0 /* LedgerNotificationPlanner.swift in Sources */,
+				A000000000000000000000A1 /* LedgerNotificationService.swift in Sources */,
 				A00000000000000000000002 /* LedgerModels.swift in Sources */,
 				A00000000000000000000003 /* LedgerStore.swift in Sources */,
 				A00000000000000000000004 /* DesignSystem.swift in Sources */,
