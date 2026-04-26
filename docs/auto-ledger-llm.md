@@ -1,6 +1,7 @@
-# Auto Ledger LLM (OpenAI Chat Completions)
+# Auto Ledger LLM (Screenshot / OCR)
 
 This layer is intentionally independent from the Auto Ledger UI and shortcut flow.
+It is only responsible for screenshot and OCR-based parsing. Voice bookkeeping uses a separate model contract documented in `docs/voice-ledger-ai.md`.
 
 ## Environment keys
 

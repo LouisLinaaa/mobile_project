@@ -3907,12 +3907,125 @@ final class ScreenshotOCRViewModel: ObservableObject {
 
 // MARK: - Voice Recognition
 
+private enum VoiceReviewSource {
+    case remote
+    case localFallback
+    case localOnly
+
+    var title: String {
+        switch self {
+        case .remote:
+            "云端语音模型"
+        case .localFallback:
+            "本地回退结果"
+        case .localOnly:
+            "本地识别结果"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .remote:
+            "已按语音模型结构化为可入账条目。"
+        case .localFallback:
+            "云端结构化失败，已回退到本地识别并尽量补全字段。"
+        case .localOnly:
+            "当前未配置语音模型，已使用本地识别结果。"
+        }
+    }
+}
+
+private struct VoiceReviewState {
+    var draft: QuickEntryDraft
+    var rawText: String
+    var confidence: Double?
+    var reason: String
+    var source: VoiceReviewSource
+
+    var requiresManualCompletion: Bool {
+        (draft.parsedAmount ?? 0) <= 0
+    }
+}
+
+private final class VoiceAudioCaptureWriter {
+    private let fileURL: URL
+    private let file: AVAudioFile
+    private let converter: AVAudioConverter?
+    private let outputFormat: AVAudioFormat
+
+    init(inputFormat: AVAudioFormat) throws {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("voice-ledger-\(UUID().uuidString)")
+            .appendingPathExtension("wav")
+
+        let settings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: 16000,
+            AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: false
+        ]
+
+        guard let outputFormat = AVAudioFormat(settings: settings) else {
+            throw VoiceLedgerServiceError.invalidResponse
+        }
+
+        self.fileURL = fileURL
+        self.outputFormat = outputFormat
+        self.converter = AVAudioConverter(from: inputFormat, to: outputFormat)
+        self.file = try AVAudioFile(forWriting: fileURL, settings: outputFormat.settings)
+    }
+
+    func append(_ buffer: AVAudioPCMBuffer) {
+        guard let converter else { return }
+
+        let ratio = outputFormat.sampleRate / buffer.format.sampleRate
+        let outputFrameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
+        guard let convertedBuffer = AVAudioPCMBuffer(
+            pcmFormat: outputFormat,
+            frameCapacity: outputFrameCapacity) else {
+            return
+        }
+
+        var didConsumeInput = false
+        var conversionError: NSError?
+
+        let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
+            if didConsumeInput {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+
+            didConsumeInput = true
+            outStatus.pointee = .haveData
+            return buffer
+        }
+
+        converter.convert(to: convertedBuffer, error: &conversionError, withInputFrom: inputBlock)
+
+        guard conversionError == nil else { return }
+        try? file.write(from: convertedBuffer)
+    }
+
+    func finish() -> Data? {
+        try? Data(contentsOf: fileURL)
+    }
+
+    func cleanup() {
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+}
+
 @MainActor
 final class VoiceRecognitionViewModel: ObservableObject {
     @Published var transcript = ""
     @Published var isListening = false
-    @Published var parseResult: AIParseResult?
+    @Published fileprivate var reviewState: VoiceReviewState?
     @Published var errorMessage: String?
+    @Published var infoMessage: String?
+    @Published var isRemoteProcessing = false
     @Published var authStatus: SFSpeechRecognizerAuthorizationStatus = .notDetermined
 
     private var recognizer: SFSpeechRecognizer?
@@ -3920,6 +4033,8 @@ final class VoiceRecognitionViewModel: ObservableObject {
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var silenceTimer: Timer?
+    private var audioWriter: VoiceAudioCaptureWriter?
+    private let remoteConfiguration = VoiceLedgerAIConfiguration.load()
 
     init() {
         recognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh-Hans-CN"))
@@ -3934,7 +4049,7 @@ final class VoiceRecognitionViewModel: ObservableObject {
         }
     }
 
-    func startListening(scheme: LedgerCategoryScheme) {
+    func startListening(store: LedgerStore) {
         guard authStatus == .authorized else {
             errorMessage = "请在设置中允许麦克风和语音识别权限"
             return
@@ -3943,8 +4058,10 @@ final class VoiceRecognitionViewModel: ObservableObject {
 
         stopListening()
         transcript = ""
-        parseResult = nil
+        reviewState = nil
         errorMessage = nil
+        infoMessage = nil
+        isRemoteProcessing = false
 
         let session = AVAudioSession.sharedInstance()
         do {
@@ -3961,25 +4078,27 @@ final class VoiceRecognitionViewModel: ObservableObject {
         recognitionRequest.taskHint = .dictation
 
         let inputNode = audioEngine.inputNode
+        let inputFormat = inputNode.outputFormat(forBus: 0)
+        audioWriter = try? VoiceAudioCaptureWriter(inputFormat: inputFormat)
         recognitionTask = recognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
             guard let self else { return }
             if let result {
                 let text = result.bestTranscription.formattedString
                 Task { @MainActor [weak self] in
                     self?.transcript = text
-                    self?.resetSilenceTimer(text: text, scheme: scheme)
+                    self?.resetSilenceTimer(text: text, store: store)
                 }
             }
             if error != nil || result?.isFinal == true {
                 Task { @MainActor [weak self] in
-                    self?.finalize(scheme: scheme)
+                    await self?.finalize(store: store)
                 }
             }
         }
 
-        let format = inputNode.outputFormat(forBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
             recognitionRequest.append(buffer)
+            self?.audioWriter?.append(buffer)
         }
 
         audioEngine.prepare()
@@ -3993,6 +4112,7 @@ final class VoiceRecognitionViewModel: ObservableObject {
 
     func stopListening() {
         silenceTimer?.invalidate()
+        silenceTimer = nil
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
         recognitionRequest?.endAudio()
@@ -4003,19 +4123,229 @@ final class VoiceRecognitionViewModel: ObservableObject {
         try? AVAudioSession.sharedInstance().setActive(false)
     }
 
-    private func resetSilenceTimer(text: String, scheme: LedgerCategoryScheme) {
+    private func resetSilenceTimer(text: String, store: LedgerStore) {
         silenceTimer?.invalidate()
         silenceTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.finalize(scheme: scheme)
+                await self?.finalize(store: store)
             }
         }
     }
 
-    private func finalize(scheme: LedgerCategoryScheme) {
+    private func finalize(store: LedgerStore) async {
         stopListening()
-        guard !transcript.isEmpty else { return }
-        parseResult = AIParser.parseText(transcript, scheme: scheme)
+        let trimmedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let audioData = audioWriter?.finish()
+        audioWriter?.cleanup()
+        audioWriter = nil
+
+        guard !trimmedTranscript.isEmpty || audioData != nil else { return }
+
+        if let remoteConfiguration, let audioData {
+            isRemoteProcessing = true
+            infoMessage = "正在用语音模型结构化记账内容…"
+
+            do {
+                let service = VoiceLedgerGatewayService(configuration: remoteConfiguration)
+                let envelope = try await service.parseVoice(
+                    VoiceLedgerParseRequest(
+                        audioData: audioData,
+                        audioMimeType: "audio/wav",
+                        context: makeContext(from: store),
+                        transcriptHint: trimmedTranscript.isEmpty ? nil : trimmedTranscript))
+
+                if let reviewState = makeReviewState(from: envelope, store: store, transcript: trimmedTranscript) {
+                    self.reviewState = reviewState
+                    errorMessage = nil
+                    infoMessage = reviewState.source.message
+                    isRemoteProcessing = false
+                    return
+                }
+
+                infoMessage = "云端结构化结果不完整，已回退到本地识别。"
+            } catch {
+                infoMessage = "云端语音模型失败，已回退到本地识别。"
+            }
+        } else {
+            infoMessage = "当前未配置语音模型，已使用本地识别结果。"
+        }
+
+        let fallback = makeLocalFallbackReviewState(from: trimmedTranscript, store: store)
+        reviewState = fallback
+        isRemoteProcessing = false
+
+        if fallback == nil {
+            errorMessage = "未能识别出可入账内容，请补充后再试。"
+        }
+    }
+
+    private func makeContext(from store: LedgerStore) -> VoiceLedgerPromptContext {
+        let categories = LedgerKind.allCases.flatMap { kind in
+            store.categories(for: kind).flatMap { category in
+                let namedCandidates = kind.localizedTitleVariants.flatMap { kindName in
+                    category.localizedNameVariants.map { categoryName in
+                        "\(kindName):\(categoryName)"
+                    }
+                }
+
+                return uniqueStrings(
+                    namedCandidates
+                        + category.localizedNameVariants
+                        + ["\(kind.storageKey):\(category.id)", category.id])
+            }
+        }
+
+        return VoiceLedgerPromptContext(
+            currencyCode: "CNY",
+            localeIdentifier: LedgerFormatters.locale.identifier,
+            categoryCandidates: categories,
+            paymentMethodCandidates: store.paymentMethods)
+    }
+
+    private func makeReviewState(
+        from envelope: AutoLedgerParseEnvelope,
+        store: LedgerStore,
+        transcript: String) -> VoiceReviewState? {
+        guard let entry = envelope.primaryEntry else { return nil }
+
+        let draft = makeDraft(from: entry, store: store, transcript: transcript)
+        let source: VoiceReviewSource = remoteConfiguration == nil ? .localOnly : .remote
+
+        return VoiceReviewState(
+            draft: draft,
+            rawText: transcript.isEmpty ? entry.rawText : transcript,
+            confidence: entry.confidence,
+            reason: entry.reason,
+            source: source)
+    }
+
+    private func makeLocalFallbackReviewState(from transcript: String, store: LedgerStore) -> VoiceReviewState? {
+        guard !transcript.isEmpty else { return nil }
+
+        let parsed = AIParser.parseText(transcript, scheme: store.currentCategoryScheme)
+        var draft = store.makeDraft()
+        draft.kind = parsed.kind
+        draft.amountText = parsed.amount.map { String(format: "%.2f", $0) } ?? ""
+        draft.selectedCategory = AIParser.resolvedCategory(for: parsed, scheme: store.currentCategoryScheme)
+        draft.paymentMethod = parsed.paymentMethod.isEmpty ? draft.paymentMethod : parsed.paymentMethod
+        draft.accountID = store.matchingAccountID(for: draft.paymentMethod)
+        draft.note = parsed.note.isEmpty ? transcript : parsed.note
+        draft.titleText = resolvedTitle(
+            merchant: parsed.merchant,
+            note: draft.note,
+            categoryName: draft.selectedCategory.name.localized)
+
+        let source: VoiceReviewSource = remoteConfiguration == nil ? .localOnly : .localFallback
+
+        return VoiceReviewState(
+            draft: draft,
+            rawText: transcript,
+            confidence: nil,
+            reason: parsed.amount == nil ? "本地规则未能可靠识别金额，建议补充后再记账。" : "已按本地识别结果生成待确认条目。",
+            source: source)
+    }
+
+    private func makeDraft(
+        from entry: AutoLedgerParseEntry,
+        store: LedgerStore,
+        transcript: String) -> QuickEntryDraft {
+        let kind = entry.normalizedKind ?? .expense
+        let category = resolvedCategory(from: entry.category, kind: kind, store: store)
+        let paymentMethod = resolvedPaymentMethod(from: entry.paymentMethod, store: store)
+
+        var draft = store.makeDraft()
+        draft.kind = kind
+        draft.amountText = entry.amount.map { String(format: "%.2f", $0) } ?? ""
+        draft.selectedCategory = category
+        draft.paymentMethod = paymentMethod
+        draft.accountID = store.matchingAccountID(for: paymentMethod)
+        draft.date = entry.occurredAt
+        draft.note = (entry.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let merchant = (entry.merchant ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        draft.titleText = resolvedTitle(
+            merchant: merchant,
+            note: draft.note.isEmpty ? transcript : draft.note,
+            categoryName: category.name.localized)
+        if draft.note.isEmpty {
+            draft.note = transcript
+        }
+        return draft
+    }
+
+    private func resolvedPaymentMethod(from hint: String?, store: LedgerStore) -> String {
+        let trimmed = hint?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else { return store.makeDraft().paymentMethod }
+
+        if let exact = store.paymentMethods.first(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+            return exact
+        }
+
+        if let contains = store.paymentMethods.first(where: {
+            $0.localizedCaseInsensitiveContains(trimmed) || trimmed.localizedCaseInsensitiveContains($0)
+        }) {
+            return contains
+        }
+
+        return trimmed
+    }
+
+    private func resolvedCategory(from hint: String?, kind: LedgerKind, store: LedgerStore) -> LedgerCategory {
+        let categories = store.categories(for: kind)
+        let normalizedHint = normalizeLookupText(hint ?? "")
+
+        guard !normalizedHint.isEmpty else {
+            return categories.first ?? LedgerCategory.defaultCategory(for: kind)
+        }
+
+        if let exact = categories.first(where: { category in
+            category.localizedNameVariants.contains { normalizeLookupText($0) == normalizedHint } ||
+                normalizeLookupText(category.id) == normalizedHint
+        }) {
+            return exact
+        }
+
+        if let fuzzy = categories.first(where: { category in
+            category.localizedNameVariants.contains { candidate in
+                let normalizedCandidate = normalizeLookupText(candidate)
+                return normalizedCandidate.contains(normalizedHint) || normalizedHint.contains(normalizedCandidate)
+            }
+        }) {
+            return fuzzy
+        }
+
+        return categories.first ?? LedgerCategory.defaultCategory(for: kind)
+    }
+
+    private func normalizeLookupText(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "：", with: ":")
+    }
+
+    private func resolvedTitle(merchant: String, note: String, categoryName: String) -> String {
+        let trimmedMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedMerchant.isEmpty {
+            return trimmedMerchant
+        }
+
+        let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedNote.isEmpty {
+            return trimmedNote
+        }
+
+        return categoryName
+    }
+
+    private func uniqueStrings(_ values: [String]) -> [String] {
+        var results: [String] = []
+
+        for value in values where !results.contains(value) {
+            results.append(value)
+        }
+
+        return results
     }
 }
 
@@ -4029,6 +4359,7 @@ struct AIBillingView: View {
     @StateObject private var voiceVM = VoiceRecognitionViewModel()
     @State private var savedEntry = false
     @State private var lastSavedAmount: String = ""
+    @State private var isVoiceEditorPresented = false
 
     private enum AITab: String, CaseIterable {
         case screenshot = "截图识别"
@@ -4109,6 +4440,9 @@ struct AIBillingView: View {
             ImagePickerRepresentable(sourceType: .camera) { image in
                 ocrVM.recognizeImage(image, scheme: store.currentCategoryScheme)
             }
+        }
+        .sheet(isPresented: $isVoiceEditorPresented) {
+            QuickAddSheet(store: store)
         }
     }
 
@@ -4264,16 +4598,24 @@ struct AIBillingView: View {
             }
             if voiceVM.isListening {
                 aiProcessingCard(message: "正在聆听，说完后自动识别…")
+            } else if voiceVM.isRemoteProcessing {
+                aiProcessingCard(message: "正在用语音模型结构化记账内容…")
+            }
+            if let info = voiceVM.infoMessage {
+                aiInfoCard(info)
             }
             if let err = voiceVM.errorMessage {
                 aiErrorCard(err)
             }
-            if let result = voiceVM.parseResult {
-                aiResultCard(result: result, onUse: {
-                    saveEntry(from: result)
+            if let reviewState = voiceVM.reviewState {
+                voiceResultCard(reviewState: reviewState, onUse: {
+                    confirmVoiceReview(reviewState)
+                }, onEdit: {
+                    editVoiceReview(reviewState)
                 }, onRetry: {
                     voiceVM.transcript = ""
-                    voiceVM.parseResult = nil
+                    voiceVM.reviewState = nil
+                    voiceVM.infoMessage = nil
                 })
             }
             voiceTipsCard
@@ -4302,7 +4644,7 @@ struct AIBillingView: View {
                     if voiceVM.isListening {
                         voiceVM.stopListening()
                     } else {
-                        voiceVM.startListening(scheme: store.currentCategoryScheme)
+                        voiceVM.startListening(store: store)
                     }
                 } label: {
                     ZStack {
@@ -4327,7 +4669,7 @@ struct AIBillingView: View {
                 Text(voiceVM.isListening ? "正在录音…点击停止" : "点击开始语音记账")
                     .font(.system(size: 17, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.ledgerText)
-                Text(voiceVM.isListening ? "说出金额和消费类型" : "支持普通话和粤语")
+                Text(voiceVM.isListening ? "说出金额、分类或支付方式" : "支持普通话和粤语，优先自动补全条目")
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(Color.ledgerMuted)
             }
@@ -4396,6 +4738,20 @@ struct AIBillingView: View {
         .frame(maxWidth: .infinity)
         .padding(16)
         .ledgerCard()
+    }
+
+    private func aiInfoCard(_ message: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "info.circle.fill")
+                .foregroundStyle(Color.ledgerAccent)
+            Text(message)
+                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.ledgerAccent.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func aiErrorCard(_ message: String) -> some View {
@@ -4474,6 +4830,109 @@ struct AIBillingView: View {
         .shadow(color: Color.black.opacity(0.05), radius: 16, x: 0, y: 8)
     }
 
+    private func voiceResultCard(
+        reviewState: VoiceReviewState,
+        onUse: @escaping () -> Void,
+        onEdit: @escaping () -> Void,
+        onRetry: @escaping () -> Void) -> some View {
+        let amountText = reviewState.draft.parsedAmount.map(LedgerFormatters.currency(_:)) ?? "待补充"
+        let accent: Color = reviewState.draft.parsedAmount == nil
+            ? .ledgerMuted
+            : (reviewState.draft.kind == .expense ? .ledgerExpense : .ledgerIncome)
+
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("语音记账结果", systemImage: "waveform.circle.fill")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.ledgerAccent)
+                    Text(reviewState.source.title)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.ledgerMuted)
+                }
+                Spacer()
+                Button(action: onRetry) {
+                    Text("重新识别")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.ledgerMuted)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(16)
+
+            Divider()
+
+            VStack(spacing: 0) {
+                aiResultRow(label: "金额", value: amountText, accent: accent)
+                Divider().padding(.leading, 16)
+                aiResultRow(label: "类型", value: reviewState.draft.kind.localizedTitle, accent: .ledgerText)
+                Divider().padding(.leading, 16)
+                aiResultRow(
+                    label: "分类",
+                    value: reviewState.draft.selectedCategory.name.localized,
+                    accent: reviewState.draft.selectedCategory.tint)
+                Divider().padding(.leading, 16)
+                aiResultRow(label: "支付", value: reviewState.draft.paymentMethod, accent: .ledgerText)
+                Divider().padding(.leading, 16)
+                aiResultRow(
+                    label: "备注",
+                    value: reviewState.draft.titleText.isEmpty ? "待补充" : reviewState.draft.titleText,
+                    accent: reviewState.draft.titleText.isEmpty ? .ledgerMuted : .ledgerText)
+                Divider().padding(.leading, 16)
+                aiResultRow(
+                    label: "时间",
+                    value: LedgerFormatters.shortTimestamp(reviewState.draft.date),
+                    accent: .ledgerText)
+            }
+
+            if !reviewState.reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Divider()
+                Text(reviewState.reason)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.ledgerMuted)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Divider()
+
+            HStack(spacing: 0) {
+                Button(action: onEdit) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "slider.horizontal.3")
+                        Text("编辑条目")
+                    }
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.ledgerAccent)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.ledgerAccentMuted)
+                }
+                .buttonStyle(LedgerResponsiveButtonStyle())
+
+                Divider()
+
+                Button(action: onUse) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                        Text(reviewState.requiresManualCompletion ? "补充后记账" : "确认记账")
+                    }
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.ledgerAccent)
+                }
+                .buttonStyle(LedgerResponsiveButtonStyle())
+            }
+            .clipShape(.rect(bottomLeadingRadius: 22, bottomTrailingRadius: 22, style: .continuous))
+        }
+        .background(Color.ledgerElevated)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .shadow(color: Color.black.opacity(0.05), radius: 16, x: 0, y: 8)
+    }
+
     private func aiResultRow(label: String, value: String, accent: Color) -> some View {
         HStack {
             Text(label)
@@ -4509,8 +4968,39 @@ struct AIBillingView: View {
             ocrVM.selectedImage = nil
             ocrVM.parseResult = nil
             voiceVM.transcript = ""
-            voiceVM.parseResult = nil
+            voiceVM.reviewState = nil
+            voiceVM.infoMessage = nil
         }
+    }
+
+    private func confirmVoiceReview(_ reviewState: VoiceReviewState) {
+        if reviewState.requiresManualCompletion {
+            editVoiceReview(reviewState)
+            return
+        }
+
+        guard let saved = store.addEntry(from: reviewState.draft) else {
+            editVoiceReview(reviewState)
+            return
+        }
+
+        lastSavedAmount = LedgerFormatters.currency(saved.amount)
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            savedEntry = true
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            withAnimation { savedEntry = false }
+            voiceVM.transcript = ""
+            voiceVM.reviewState = nil
+            voiceVM.infoMessage = nil
+            voiceVM.errorMessage = nil
+        }
+    }
+
+    private func editVoiceReview(_ reviewState: VoiceReviewState) {
+        store.pendingAIDraft = reviewState.draft
+        isVoiceEditorPresented = true
     }
 }
 

@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: `2026-04-23`
+Last updated: `2026-04-27`
 
 ## Product Position
 
@@ -49,6 +49,7 @@ The current codebase focuses on three priorities:
 - screenshot handoff through App Shortcuts
 - review and save flow inside the app
 - optional OpenAI-backed parsing via environment or `Info.plist` configuration
+- voice bookkeeping tab with local transcript capture, cloud voice-model parsing, and local fallback review flow
 
 ## Known Constraints
 
@@ -66,7 +67,7 @@ The current codebase focuses on three priorities:
 
 - continue splitting large SwiftUI files into smaller feature-focused components
 - polish backup and restore UX around the current signing limitation
-- stabilize Auto Ledger parsing and review flows
+- stabilize Auto Ledger parsing and review flows, especially the cloud voice-model fallback path
 - add lightweight tests around persistence, import/export, and snapshot generation
 
 ## Repository Notes
