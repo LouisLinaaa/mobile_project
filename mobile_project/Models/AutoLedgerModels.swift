@@ -101,24 +101,10 @@ struct AutoLedgerParseContext {
     let paymentMethodCandidates: [String]
 }
 
-struct VoiceLedgerPromptContext {
-    let currencyCode: String
-    let localeIdentifier: String
-    let categoryCandidates: [String]
-    let paymentMethodCandidates: [String]
-}
-
 struct AutoLedgerParseRequest {
     let imageData: Data?
     let context: AutoLedgerParseContext
     let ocrTextHint: String?
-}
-
-struct VoiceLedgerParseRequest {
-    let audioData: Data
-    let audioMimeType: String
-    let context: VoiceLedgerPromptContext
-    let transcriptHint: String?
 }
 
 struct AutoLedgerParseEntry: Codable {
@@ -312,23 +298,16 @@ struct AutoLedgerOpenAIContentPart: Encodable {
     let type: String
     let text: String?
     let imageURL: AutoLedgerOpenAIImageURL?
-    let inputAudio: AutoLedgerOpenAIInputAudio?
 
     enum CodingKeys: String, CodingKey {
         case type
         case text
         case imageURL = "image_url"
-        case inputAudio = "input_audio"
     }
 }
 
 struct AutoLedgerOpenAIImageURL: Encodable {
     let url: String
-}
-
-struct AutoLedgerOpenAIInputAudio: Encodable {
-    let data: String
-    let format: String
 }
 
 struct AutoLedgerOpenAIChatResponse: Decodable {

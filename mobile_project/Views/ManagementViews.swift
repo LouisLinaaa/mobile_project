@@ -3810,20 +3810,21 @@ enum AIParser {
 final class ScreenshotOCRViewModel: ObservableObject {
     @Published var selectedImage: UIImage?
     @Published var recognizedText = ""
-    @Published var parseResult: AIParseResult?
+    @Published fileprivate var reviewState: AIBillingReviewState?
     @Published var isProcessing = false
     @Published var errorMessage: String?
     @Published var showImagePicker = false
     @Published var showCamera = false
     @Published var confidence: Float = 0
 
-    func recognizeImage(_ image: UIImage, scheme: LedgerCategoryScheme) {
+    func recognizeImage(_ image: UIImage, store: LedgerStore) {
         selectedImage = image
         isProcessing = true
         errorMessage = nil
         recognizedText = ""
-        parseResult = nil
+        reviewState = nil
         confidence = 0
+        let scheme = store.currentCategoryScheme
 
         guard let cgImage = image.cgImage else {
             errorMessage = "无法处理该图片"
@@ -3891,7 +3892,12 @@ final class ScreenshotOCRViewModel: ObservableObject {
                 Task { @MainActor in
                     self.recognizedText = fullText
                     self.confidence = avgConfidence
-                    self.parseResult = AIParser.parseTextAndPairs(fullText, rowPairs: rowPairs, scheme: scheme)
+                    let result = AIParser.parseTextAndPairs(fullText, rowPairs: rowPairs, scheme: scheme)
+                    self.reviewState = AIBillingReviewBuilder.makeState(
+                        from: result,
+                        source: .screenshot,
+                        store: store,
+                        confidence: Double(avgConfidence))
                     self.isProcessing = false
                 }
             }
@@ -3905,127 +3911,157 @@ final class ScreenshotOCRViewModel: ObservableObject {
     }
 }
 
-// MARK: - Voice Recognition
+// MARK: - AI Billing Review
 
-private enum VoiceReviewSource {
-    case remote
-    case localFallback
-    case localOnly
+private enum AIBillingReviewSource {
+    case screenshot
+    case voice
+
+    var icon: String {
+        switch self {
+        case .screenshot:
+            "camera.viewfinder"
+        case .voice:
+            "waveform.circle.fill"
+        }
+    }
 
     var title: String {
         switch self {
-        case .remote:
-            "云端语音模型"
-        case .localFallback:
-            "本地回退结果"
-        case .localOnly:
+        case .screenshot:
+            "截图识别结果"
+        case .voice:
             "本地识别结果"
         }
     }
 
     var message: String {
         switch self {
-        case .remote:
-            "已按语音模型结构化为可入账条目。"
-        case .localFallback:
-            "云端结构化失败，已回退到本地识别并尽量补全字段。"
-        case .localOnly:
-            "当前未配置语音模型，已使用本地识别结果。"
+        case .screenshot:
+            "已从截图生成待确认条目，可直接修改字段后入账。"
+        case .voice:
+            "已按本地语音识别结果生成待确认条目，可直接修改字段后入账。"
         }
     }
 }
 
-private struct VoiceReviewState {
-    var draft: QuickEntryDraft
+private struct AIBillingReviewState {
+    var draft: AutoLedgerReviewDraft
     var rawText: String
-    var confidence: Double?
-    var reason: String
-    var source: VoiceReviewSource
+    var source: AIBillingReviewSource
 
     var requiresManualCompletion: Bool {
         (draft.parsedAmount ?? 0) <= 0
     }
 }
 
-private final class VoiceAudioCaptureWriter {
-    private let fileURL: URL
-    private let file: AVAudioFile
-    private let converter: AVAudioConverter?
-    private let outputFormat: AVAudioFormat
+@MainActor
+private enum AIBillingReviewBuilder {
+    static func makeState(
+        from result: AIParseResult,
+        source: AIBillingReviewSource,
+        store: LedgerStore,
+        confidence: Double? = nil) -> AIBillingReviewState {
+        let kind = result.kind
+        let categories = store.categories(for: kind)
+        let parsedCategory = AIParser.resolvedCategory(for: result, scheme: store.currentCategoryScheme)
+        let category = categories.first(where: { $0.id == parsedCategory.id })
+            ?? categories.first(where: { $0.name.localized == parsedCategory.name.localized })
+            ?? categories.first
+            ?? LedgerCategory.defaultCategory(for: kind)
+        let paymentMethod = resolvedPaymentMethod(result.paymentMethod, store: store)
+        let rawText = result.rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let merchant = result.merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+        let note = resolvedNote(from: result, source: source, rawText: rawText)
+        let amountText = result.amount.map { String(format: "%.2f", $0) } ?? ""
+        let effectiveConfidence = confidence ?? (result.amount == nil ? 0.35 : 0.70)
+        let reason = resolvedReason(from: result, source: source)
 
-    init(inputFormat: AVAudioFormat) throws {
-        let fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("voice-ledger-\(UUID().uuidString)")
-            .appendingPathExtension("wav")
+        let draft = AutoLedgerReviewDraft(
+            bookID: store.currentBook.id,
+            amountText: amountText,
+            kind: kind,
+            categoryID: category.id,
+            accountID: store.matchingAccountID(for: paymentMethod),
+            paymentMethod: paymentMethod,
+            occurredAt: Date(),
+            merchant: merchant,
+            tags: [],
+            note: note,
+            rawText: rawText,
+            confidence: effectiveConfidence,
+            reason: reason,
+            recognizedEntryCount: 1,
+            isExcludedFromStatistics: false,
+            isExcludedFromBudget: false)
 
-        let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVSampleRateKey: 16000,
-            AVNumberOfChannelsKey: 1,
-            AVLinearPCMBitDepthKey: 16,
-            AVLinearPCMIsFloatKey: false,
-            AVLinearPCMIsBigEndianKey: false,
-            AVLinearPCMIsNonInterleaved: false
-        ]
-
-        guard let outputFormat = AVAudioFormat(settings: settings) else {
-            throw VoiceLedgerServiceError.invalidResponse
-        }
-
-        self.fileURL = fileURL
-        self.outputFormat = outputFormat
-        self.converter = AVAudioConverter(from: inputFormat, to: outputFormat)
-        self.file = try AVAudioFile(forWriting: fileURL, settings: outputFormat.settings)
+        return AIBillingReviewState(draft: draft, rawText: rawText, source: source)
     }
 
-    func append(_ buffer: AVAudioPCMBuffer) {
-        guard let converter else { return }
+    private static func resolvedPaymentMethod(_ hint: String, store: LedgerStore) -> String {
+        let trimmed = hint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "待确认" }
 
-        let ratio = outputFormat.sampleRate / buffer.format.sampleRate
-        let outputFrameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
-        guard let convertedBuffer = AVAudioPCMBuffer(
-            pcmFormat: outputFormat,
-            frameCapacity: outputFrameCapacity) else {
-            return
+        if let exact = store.paymentMethods.first(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+            return exact
         }
 
-        var didConsumeInput = false
-        var conversionError: NSError?
-
-        let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
-            if didConsumeInput {
-                outStatus.pointee = .noDataNow
-                return nil
-            }
-
-            didConsumeInput = true
-            outStatus.pointee = .haveData
-            return buffer
+        if trimmed.localizedCaseInsensitiveContains("微信") {
+            return store.paymentMethods.first(where: { $0.localizedCaseInsensitiveContains("微信") }) ?? "微信"
         }
 
-        converter.convert(to: convertedBuffer, error: &conversionError, withInputFrom: inputBlock)
+        if trimmed.localizedCaseInsensitiveContains("支付宝") {
+            return store.paymentMethods.first(where: { $0.localizedCaseInsensitiveContains("支付宝") }) ?? "支付宝"
+        }
 
-        guard conversionError == nil else { return }
-        try? file.write(from: convertedBuffer)
+        if ["银行卡", "信用卡", "储蓄卡", "visa", "mastercard"].contains(where: trimmed.localizedCaseInsensitiveContains) {
+            return store.paymentMethods.first(where: {
+                ["银行卡", "信用卡", "储蓄卡"].contains(where: $0.localizedCaseInsensitiveContains)
+            }) ?? "银行卡"
+        }
+
+        if ["现金", "cash"].contains(where: trimmed.localizedCaseInsensitiveContains) {
+            return store.paymentMethods.first(where: { $0.localizedCaseInsensitiveContains("现金") }) ?? "现金"
+        }
+
+        return "待确认"
     }
 
-    func finish() -> Data? {
-        try? Data(contentsOf: fileURL)
+    private static func resolvedNote(
+        from result: AIParseResult,
+        source: AIBillingReviewSource,
+        rawText: String) -> String {
+        let note = result.note.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !note.isEmpty {
+            return note
+        }
+
+        return source == .voice ? rawText : ""
     }
 
-    func cleanup() {
-        try? FileManager.default.removeItem(at: fileURL)
+    private static func resolvedReason(from result: AIParseResult, source: AIBillingReviewSource) -> String {
+        if result.amount == nil {
+            return "没有识别到金额，请补充金额后确认入账。"
+        }
+
+        switch source {
+        case .screenshot:
+            return "已按截图文字生成待确认条目。"
+        case .voice:
+            return "已按本地语音转写生成待确认条目。"
+        }
     }
 }
+
+// MARK: - Voice Recognition
 
 @MainActor
 final class VoiceRecognitionViewModel: ObservableObject {
     @Published var transcript = ""
     @Published var isListening = false
-    @Published fileprivate var reviewState: VoiceReviewState?
+    @Published fileprivate var reviewState: AIBillingReviewState?
     @Published var errorMessage: String?
     @Published var infoMessage: String?
-    @Published var isRemoteProcessing = false
     @Published var authStatus: SFSpeechRecognizerAuthorizationStatus = .notDetermined
 
     private var recognizer: SFSpeechRecognizer?
@@ -4033,8 +4069,7 @@ final class VoiceRecognitionViewModel: ObservableObject {
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var silenceTimer: Timer?
-    private var audioWriter: VoiceAudioCaptureWriter?
-    private let remoteConfiguration = VoiceLedgerAIConfiguration.load()
+    private var isFinalizing = false
 
     init() {
         recognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh-Hans-CN"))
@@ -4061,7 +4096,6 @@ final class VoiceRecognitionViewModel: ObservableObject {
         reviewState = nil
         errorMessage = nil
         infoMessage = nil
-        isRemoteProcessing = false
 
         let session = AVAudioSession.sharedInstance()
         do {
@@ -4079,7 +4113,6 @@ final class VoiceRecognitionViewModel: ObservableObject {
 
         let inputNode = audioEngine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
-        audioWriter = try? VoiceAudioCaptureWriter(inputFormat: inputFormat)
         recognitionTask = recognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
             guard let self else { return }
             if let result {
@@ -4091,14 +4124,13 @@ final class VoiceRecognitionViewModel: ObservableObject {
             }
             if error != nil || result?.isFinal == true {
                 Task { @MainActor [weak self] in
-                    await self?.finalize(store: store)
+                    self?.finishListening(store: store)
                 }
             }
         }
 
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { buffer, _ in
             recognitionRequest.append(buffer)
-            self?.audioWriter?.append(buffer)
         }
 
         audioEngine.prepare()
@@ -4108,6 +4140,11 @@ final class VoiceRecognitionViewModel: ObservableObject {
         } catch {
             errorMessage = "无法启动录音引擎"
         }
+    }
+
+    func finishListening(store: LedgerStore) {
+        guard !isFinalizing else { return }
+        finalize(store: store)
     }
 
     func stopListening() {
@@ -4127,225 +4164,34 @@ final class VoiceRecognitionViewModel: ObservableObject {
         silenceTimer?.invalidate()
         silenceTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
             Task { @MainActor [weak self] in
-                await self?.finalize(store: store)
+                self?.finalize(store: store)
             }
         }
     }
 
-    private func finalize(store: LedgerStore) async {
+    private func finalize(store: LedgerStore) {
+        guard !isFinalizing else { return }
+        isFinalizing = true
+        defer {
+            isFinalizing = false
+        }
+
         stopListening()
         let trimmedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        let audioData = audioWriter?.finish()
-        audioWriter?.cleanup()
-        audioWriter = nil
 
-        guard !trimmedTranscript.isEmpty || audioData != nil else { return }
-
-        if let remoteConfiguration, let audioData {
-            isRemoteProcessing = true
-            infoMessage = "正在用语音模型结构化记账内容…"
-
-            do {
-                let service = VoiceLedgerGatewayService(configuration: remoteConfiguration)
-                let envelope = try await service.parseVoice(
-                    VoiceLedgerParseRequest(
-                        audioData: audioData,
-                        audioMimeType: "audio/wav",
-                        context: makeContext(from: store),
-                        transcriptHint: trimmedTranscript.isEmpty ? nil : trimmedTranscript))
-
-                if let reviewState = makeReviewState(from: envelope, store: store, transcript: trimmedTranscript) {
-                    self.reviewState = reviewState
-                    errorMessage = nil
-                    infoMessage = reviewState.source.message
-                    isRemoteProcessing = false
-                    return
-                }
-
-                infoMessage = "云端结构化结果不完整，已回退到本地识别。"
-            } catch {
-                infoMessage = "云端语音模型失败，已回退到本地识别。"
-            }
-        } else {
-            infoMessage = "当前未配置语音模型，已使用本地识别结果。"
-        }
-
-        let fallback = makeLocalFallbackReviewState(from: trimmedTranscript, store: store)
-        reviewState = fallback
-        isRemoteProcessing = false
-
-        if fallback == nil {
+        guard !trimmedTranscript.isEmpty else {
             errorMessage = "未能识别出可入账内容，请补充后再试。"
-        }
-    }
-
-    private func makeContext(from store: LedgerStore) -> VoiceLedgerPromptContext {
-        let categories = LedgerKind.allCases.flatMap { kind in
-            store.categories(for: kind).flatMap { category in
-                let namedCandidates = kind.localizedTitleVariants.flatMap { kindName in
-                    category.localizedNameVariants.map { categoryName in
-                        "\(kindName):\(categoryName)"
-                    }
-                }
-
-                return uniqueStrings(
-                    namedCandidates
-                        + category.localizedNameVariants
-                        + ["\(kind.storageKey):\(category.id)", category.id])
-            }
+            infoMessage = nil
+            return
         }
 
-        return VoiceLedgerPromptContext(
-            currencyCode: "CNY",
-            localeIdentifier: LedgerFormatters.locale.identifier,
-            categoryCandidates: categories,
-            paymentMethodCandidates: store.paymentMethods)
-    }
-
-    private func makeReviewState(
-        from envelope: AutoLedgerParseEnvelope,
-        store: LedgerStore,
-        transcript: String) -> VoiceReviewState? {
-        guard let entry = envelope.primaryEntry else { return nil }
-
-        let draft = makeDraft(from: entry, store: store, transcript: transcript)
-        let source: VoiceReviewSource = remoteConfiguration == nil ? .localOnly : .remote
-
-        return VoiceReviewState(
-            draft: draft,
-            rawText: transcript.isEmpty ? entry.rawText : transcript,
-            confidence: entry.confidence,
-            reason: entry.reason,
-            source: source)
-    }
-
-    private func makeLocalFallbackReviewState(from transcript: String, store: LedgerStore) -> VoiceReviewState? {
-        guard !transcript.isEmpty else { return nil }
-
-        let parsed = AIParser.parseText(transcript, scheme: store.currentCategoryScheme)
-        var draft = store.makeDraft()
-        draft.kind = parsed.kind
-        draft.amountText = parsed.amount.map { String(format: "%.2f", $0) } ?? ""
-        draft.selectedCategory = AIParser.resolvedCategory(for: parsed, scheme: store.currentCategoryScheme)
-        draft.paymentMethod = parsed.paymentMethod.isEmpty ? draft.paymentMethod : parsed.paymentMethod
-        draft.accountID = store.matchingAccountID(for: draft.paymentMethod)
-        draft.note = parsed.note.isEmpty ? transcript : parsed.note
-        draft.titleText = resolvedTitle(
-            merchant: parsed.merchant,
-            note: draft.note,
-            categoryName: draft.selectedCategory.name.localized)
-
-        let source: VoiceReviewSource = remoteConfiguration == nil ? .localOnly : .localFallback
-
-        return VoiceReviewState(
-            draft: draft,
-            rawText: transcript,
-            confidence: nil,
-            reason: parsed.amount == nil ? "本地规则未能可靠识别金额，建议补充后再记账。" : "已按本地识别结果生成待确认条目。",
-            source: source)
-    }
-
-    private func makeDraft(
-        from entry: AutoLedgerParseEntry,
-        store: LedgerStore,
-        transcript: String) -> QuickEntryDraft {
-        let kind = entry.normalizedKind ?? .expense
-        let category = resolvedCategory(from: entry.category, kind: kind, store: store)
-        let paymentMethod = resolvedPaymentMethod(from: entry.paymentMethod, store: store)
-
-        var draft = store.makeDraft()
-        draft.kind = kind
-        draft.amountText = entry.amount.map { String(format: "%.2f", $0) } ?? ""
-        draft.selectedCategory = category
-        draft.paymentMethod = paymentMethod
-        draft.accountID = store.matchingAccountID(for: paymentMethod)
-        draft.date = entry.occurredAt
-        draft.note = (entry.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let merchant = (entry.merchant ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        draft.titleText = resolvedTitle(
-            merchant: merchant,
-            note: draft.note.isEmpty ? transcript : draft.note,
-            categoryName: category.name.localized)
-        if draft.note.isEmpty {
-            draft.note = transcript
-        }
-        return draft
-    }
-
-    private func resolvedPaymentMethod(from hint: String?, store: LedgerStore) -> String {
-        let trimmed = hint?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !trimmed.isEmpty else { return store.makeDraft().paymentMethod }
-
-        if let exact = store.paymentMethods.first(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) {
-            return exact
-        }
-
-        if let contains = store.paymentMethods.first(where: {
-            $0.localizedCaseInsensitiveContains(trimmed) || trimmed.localizedCaseInsensitiveContains($0)
-        }) {
-            return contains
-        }
-
-        return trimmed
-    }
-
-    private func resolvedCategory(from hint: String?, kind: LedgerKind, store: LedgerStore) -> LedgerCategory {
-        let categories = store.categories(for: kind)
-        let normalizedHint = normalizeLookupText(hint ?? "")
-
-        guard !normalizedHint.isEmpty else {
-            return categories.first ?? LedgerCategory.defaultCategory(for: kind)
-        }
-
-        if let exact = categories.first(where: { category in
-            category.localizedNameVariants.contains { normalizeLookupText($0) == normalizedHint } ||
-                normalizeLookupText(category.id) == normalizedHint
-        }) {
-            return exact
-        }
-
-        if let fuzzy = categories.first(where: { category in
-            category.localizedNameVariants.contains { candidate in
-                let normalizedCandidate = normalizeLookupText(candidate)
-                return normalizedCandidate.contains(normalizedHint) || normalizedHint.contains(normalizedCandidate)
-            }
-        }) {
-            return fuzzy
-        }
-
-        return categories.first ?? LedgerCategory.defaultCategory(for: kind)
-    }
-
-    private func normalizeLookupText(_ value: String) -> String {
-        value
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-            .replacingOccurrences(of: " ", with: "")
-            .replacingOccurrences(of: "：", with: ":")
-    }
-
-    private func resolvedTitle(merchant: String, note: String, categoryName: String) -> String {
-        let trimmedMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedMerchant.isEmpty {
-            return trimmedMerchant
-        }
-
-        let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedNote.isEmpty {
-            return trimmedNote
-        }
-
-        return categoryName
-    }
-
-    private func uniqueStrings(_ values: [String]) -> [String] {
-        var results: [String] = []
-
-        for value in values where !results.contains(value) {
-            results.append(value)
-        }
-
-        return results
+        let parsed = AIParser.parseText(trimmedTranscript, scheme: store.currentCategoryScheme)
+        reviewState = AIBillingReviewBuilder.makeState(
+            from: parsed,
+            source: .voice,
+            store: store)
+        errorMessage = nil
+        infoMessage = AIBillingReviewSource.voice.message
     }
 }
 
@@ -4359,7 +4205,6 @@ struct AIBillingView: View {
     @StateObject private var voiceVM = VoiceRecognitionViewModel()
     @State private var savedEntry = false
     @State private var lastSavedAmount: String = ""
-    @State private var isVoiceEditorPresented = false
 
     private enum AITab: String, CaseIterable {
         case screenshot = "截图识别"
@@ -4433,16 +4278,13 @@ struct AIBillingView: View {
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $ocrVM.showImagePicker) {
             ImagePickerRepresentable(sourceType: .photoLibrary) { image in
-                ocrVM.recognizeImage(image, scheme: store.currentCategoryScheme)
+                ocrVM.recognizeImage(image, store: store)
             }
         }
         .sheet(isPresented: $ocrVM.showCamera) {
             ImagePickerRepresentable(sourceType: .camera) { image in
-                ocrVM.recognizeImage(image, scheme: store.currentCategoryScheme)
+                ocrVM.recognizeImage(image, store: store)
             }
-        }
-        .sheet(isPresented: $isVoiceEditorPresented) {
-            QuickAddSheet(store: store)
         }
     }
 
@@ -4467,13 +4309,13 @@ struct AIBillingView: View {
                 aiErrorCard(err)
             }
 
-            // Result
-            if let result = ocrVM.parseResult {
-                aiResultCard(result: result, onUse: {
-                    saveEntry(from: result)
+            if let reviewBinding = reviewBinding($ocrVM.reviewState) {
+                entryReviewCard(reviewState: reviewBinding, onConfirm: {
+                    saveEntry(from: reviewBinding.wrappedValue)
                 }, onRetry: {
                     ocrVM.selectedImage = nil
-                    ocrVM.parseResult = nil
+                    ocrVM.reviewState = nil
+                    ocrVM.recognizedText = ""
                 })
             }
 
@@ -4554,7 +4396,7 @@ struct AIBillingView: View {
 
             Button {
                 ocrVM.selectedImage = nil
-                ocrVM.parseResult = nil
+                ocrVM.reviewState = nil
                 ocrVM.recognizedText = ""
             } label: {
                 Image(systemName: "xmark.circle.fill")
@@ -4598,8 +4440,6 @@ struct AIBillingView: View {
             }
             if voiceVM.isListening {
                 aiProcessingCard(message: "正在聆听，说完后自动识别…")
-            } else if voiceVM.isRemoteProcessing {
-                aiProcessingCard(message: "正在用语音模型结构化记账内容…")
             }
             if let info = voiceVM.infoMessage {
                 aiInfoCard(info)
@@ -4607,15 +4447,14 @@ struct AIBillingView: View {
             if let err = voiceVM.errorMessage {
                 aiErrorCard(err)
             }
-            if let reviewState = voiceVM.reviewState {
-                voiceResultCard(reviewState: reviewState, onUse: {
-                    confirmVoiceReview(reviewState)
-                }, onEdit: {
-                    editVoiceReview(reviewState)
+            if let reviewBinding = reviewBinding($voiceVM.reviewState) {
+                entryReviewCard(reviewState: reviewBinding, onConfirm: {
+                    saveEntry(from: reviewBinding.wrappedValue)
                 }, onRetry: {
                     voiceVM.transcript = ""
                     voiceVM.reviewState = nil
                     voiceVM.infoMessage = nil
+                    voiceVM.errorMessage = nil
                 })
             }
             voiceTipsCard
@@ -4642,7 +4481,7 @@ struct AIBillingView: View {
 
                 Button {
                     if voiceVM.isListening {
-                        voiceVM.stopListening()
+                        voiceVM.finishListening(store: store)
                     } else {
                         voiceVM.startListening(store: store)
                     }
@@ -4768,85 +4607,22 @@ struct AIBillingView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private func aiResultCard(result: AIParseResult, onUse: @escaping () -> Void,
-                              onRetry: @escaping () -> Void) -> some View {
-        let category = AIParser.resolvedCategory(for: result, scheme: store.currentCategoryScheme)
-
-        return VStack(alignment: .leading, spacing: 0) {
-            // Header
-            HStack {
-                Label("AI 识别结果", systemImage: "sparkle")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.ledgerAccent)
-                Spacer()
-                Button(action: onRetry) {
-                    Text("重新识别")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.ledgerMuted)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(16)
-
-            Divider()
-
-            // Fields
-            VStack(spacing: 0) {
-                aiResultRow(
-                    label: "金额",
-                    value: result.amount.map { LedgerFormatters.currency($0) } ?? "未识别",
-                    accent: result
-                        .amount != nil ? (result.kind == .expense ? .ledgerExpense : .ledgerIncome) : .ledgerMuted)
-                Divider().padding(.leading, 16)
-                aiResultRow(label: "类型", value: result.kind.localizedTitle, accent: .ledgerText)
-                Divider().padding(.leading, 16)
-                aiResultRow(label: "分类", value: category.name.localized, accent: category.tint)
-                if !result.paymentMethod.isEmpty {
-                    Divider().padding(.leading, 16)
-                    aiResultRow(label: "支付", value: result.paymentMethod, accent: .ledgerText)
-                }
-            }
-
-            // Use button
-            Divider()
-            Button(action: onUse) {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
-                    Text(result.amount != nil ? "确认记账" : "手动补充后记账")
-                }
-                .font(.system(size: 16, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Color.ledgerAccent)
-                .clipShape(RoundedRectangle(cornerRadius: 0, style: .continuous))
-                .clipShape(
-                    .rect(bottomLeadingRadius: 22, bottomTrailingRadius: 22, style: .continuous))
-            }
-            .buttonStyle(LedgerResponsiveButtonStyle())
-        }
-        .background(Color.ledgerElevated)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .shadow(color: Color.black.opacity(0.05), radius: 16, x: 0, y: 8)
-    }
-
-    private func voiceResultCard(
-        reviewState: VoiceReviewState,
-        onUse: @escaping () -> Void,
-        onEdit: @escaping () -> Void,
+    private func entryReviewCard(
+        reviewState: Binding<AIBillingReviewState>,
+        onConfirm: @escaping () -> Void,
         onRetry: @escaping () -> Void) -> some View {
-        let amountText = reviewState.draft.parsedAmount.map(LedgerFormatters.currency(_:)) ?? "待补充"
-        let accent: Color = reviewState.draft.parsedAmount == nil
-            ? .ledgerMuted
-            : (reviewState.draft.kind == .expense ? .ledgerExpense : .ledgerIncome)
+        let state = reviewState.wrappedValue
+        let draft = state.draft
+        let category = category(for: draft)
+        let canSave = (draft.parsedAmount ?? 0) > 0
 
-        return VStack(alignment: .leading, spacing: 0) {
+        return VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Label("语音记账结果", systemImage: "waveform.circle.fill")
+                    Label(state.source.title, systemImage: state.source.icon)
                         .font(.system(size: 14, weight: .bold, design: .rounded))
                         .foregroundStyle(Color.ledgerAccent)
-                    Text(reviewState.source.title)
+                    Text(state.source.message)
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.ledgerMuted)
                 }
@@ -4858,131 +4634,342 @@ struct AIBillingView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(16)
 
-            Divider()
+            entryAmountField(reviewState)
+            entryKindPicker(reviewState)
+            entryCategoryGrid(reviewState, selectedCategory: category)
+            entryPaymentMenu(reviewState)
+            entryDatePicker(reviewState)
+            entryTextField(
+                title: "商户 / 标题",
+                placeholder: category.name.localized,
+                text: draftTextBinding(reviewState, \.merchant))
+            entryTextField(
+                title: "备注",
+                placeholder: "补充说明",
+                text: draftTextBinding(reviewState, \.note),
+                axis: .vertical)
 
-            VStack(spacing: 0) {
-                aiResultRow(label: "金额", value: amountText, accent: accent)
-                Divider().padding(.leading, 16)
-                aiResultRow(label: "类型", value: reviewState.draft.kind.localizedTitle, accent: .ledgerText)
-                Divider().padding(.leading, 16)
-                aiResultRow(
-                    label: "分类",
-                    value: reviewState.draft.selectedCategory.name.localized,
-                    accent: reviewState.draft.selectedCategory.tint)
-                Divider().padding(.leading, 16)
-                aiResultRow(label: "支付", value: reviewState.draft.paymentMethod, accent: .ledgerText)
-                Divider().padding(.leading, 16)
-                aiResultRow(
-                    label: "备注",
-                    value: reviewState.draft.titleText.isEmpty ? "待补充" : reviewState.draft.titleText,
-                    accent: reviewState.draft.titleText.isEmpty ? .ledgerMuted : .ledgerText)
-                Divider().padding(.leading, 16)
-                aiResultRow(
-                    label: "时间",
-                    value: LedgerFormatters.shortTimestamp(reviewState.draft.date),
-                    accent: .ledgerText)
-            }
-
-            if !reviewState.reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Divider()
-                Text(reviewState.reason)
+            if !draft.reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(draft.reason)
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundStyle(Color.ledgerMuted)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Divider()
-
-            HStack(spacing: 0) {
-                Button(action: onEdit) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "slider.horizontal.3")
-                        Text("编辑条目")
-                    }
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.ledgerAccent)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.ledgerAccentMuted)
+            Button(action: onConfirm) {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                    Text(canSave ? "确认记账" : "补充金额后记账")
                 }
-                .buttonStyle(LedgerResponsiveButtonStyle())
-
-                Divider()
-
-                Button(action: onUse) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                        Text(reviewState.requiresManualCompletion ? "补充后记账" : "确认记账")
-                    }
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.ledgerAccent)
-                }
-                .buttonStyle(LedgerResponsiveButtonStyle())
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(canSave ? Color.ledgerAccent : Color.ledgerMuted.opacity(0.45))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
-            .clipShape(.rect(bottomLeadingRadius: 22, bottomTrailingRadius: 22, style: .continuous))
+            .buttonStyle(LedgerResponsiveButtonStyle())
+            .disabled(!canSave)
         }
+        .padding(16)
         .background(Color.ledgerElevated)
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .shadow(color: Color.black.opacity(0.05), radius: 16, x: 0, y: 8)
     }
 
-    private func aiResultRow(label: String, value: String, accent: Color) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(size: 14, weight: .medium, design: .rounded))
-                .foregroundStyle(Color.ledgerMuted)
-                .frame(width: 44, alignment: .leading)
-            Spacer()
-            Text(value)
-                .font(.system(size: 16, weight: .semibold, design: .rounded))
-                .foregroundStyle(accent)
+    private func entryAmountField(_ reviewState: Binding<AIBillingReviewState>) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("金额")
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("¥")
+                    .font(.system(size: 28, weight: .black, design: .rounded))
+                    .foregroundStyle(Color.ledgerText)
+                TextField("0.00", text: draftTextBinding(reviewState, \.amountText))
+                    .keyboardType(.decimalPad)
+                    .font(.system(size: 32, weight: .black, design: .rounded))
+                    .foregroundStyle(Color.ledgerText)
+            }
+            .padding(16)
+            .background(Color.ledgerSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.ledgerCardStroke, lineWidth: 1))
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+    }
+
+    private func entryKindPicker(_ reviewState: Binding<AIBillingReviewState>) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("类型")
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+
+            Picker("类型", selection: kindBinding(reviewState)) {
+                ForEach(LedgerKind.allCases) { kind in
+                    Text(kind.localizedTitle).tag(kind)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+
+    private func entryCategoryGrid(
+        _ reviewState: Binding<AIBillingReviewState>,
+        selectedCategory: LedgerCategory) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("分类")
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 86), spacing: 10)], spacing: 10) {
+                ForEach(store.categories(for: reviewState.wrappedValue.draft.kind)) { category in
+                    Button {
+                        updateReview(reviewState) { draft in
+                            draft.categoryID = category.id
+                        }
+                    } label: {
+                        VStack(spacing: 8) {
+                            ZStack {
+                                Circle()
+                                    .fill(category.tint.opacity(selectedCategory.id == category.id ? 0.24 : 0.14))
+                                    .frame(width: 42, height: 42)
+                                Image(systemName: category.icon)
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(category.tint)
+                            }
+                            Text(category.name.localized)
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                .foregroundStyle(Color.ledgerText)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(selectedCategory.id == category.id ? category.tint.opacity(0.14) : Color
+                                    .ledgerSurface)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .stroke(
+                                            selectedCategory.id == category.id ? category.tint : Color.clear,
+                                            lineWidth: 1.3)))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func entryPaymentMenu(_ reviewState: Binding<AIBillingReviewState>) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("支付方式")
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+
+            Menu {
+                ForEach(paymentMethodOptions, id: \.self) { method in
+                    Button(method.localized) {
+                        updateReview(reviewState) { draft in
+                            draft.paymentMethod = method
+                            draft.accountID = store.matchingAccountID(for: method)
+                        }
+                    }
+                }
+            } label: {
+                HStack {
+                    Text(reviewState.wrappedValue.draft.paymentMethod.localized)
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.ledgerText)
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color.ledgerMuted)
+                }
+                .padding(16)
+                .background(Color.ledgerSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.ledgerCardStroke, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func entryDatePicker(_ reviewState: Binding<AIBillingReviewState>) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("时间")
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+
+            DatePicker(
+                "记账时间",
+                selection: draftDateBinding(reviewState),
+                displayedComponents: [.date, .hourAndMinute])
+                .labelsHidden()
+                .datePickerStyle(.compact)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .background(Color.ledgerSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.ledgerCardStroke, lineWidth: 1))
+        }
+    }
+
+    private func entryTextField(
+        title: String,
+        placeholder: String,
+        text: Binding<String>,
+        axis: Axis = .horizontal) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+
+            TextField(placeholder, text: text, axis: axis)
+                .lineLimit(axis == .vertical ? 2...4 : 1...1)
+                .padding(16)
+                .background(Color.ledgerSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.ledgerCardStroke, lineWidth: 1))
+                .font(.system(size: 16, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+        }
+    }
+
+    private func reviewBinding(_ source: Binding<AIBillingReviewState?>) -> Binding<AIBillingReviewState>? {
+        guard source.wrappedValue != nil else { return nil }
+
+        return Binding(
+            get: { source.wrappedValue! },
+            set: { source.wrappedValue = $0 })
+    }
+
+    private func draftTextBinding(
+        _ reviewState: Binding<AIBillingReviewState>,
+        _ keyPath: WritableKeyPath<AutoLedgerReviewDraft, String>) -> Binding<String> {
+        Binding(
+            get: { reviewState.wrappedValue.draft[keyPath: keyPath] },
+            set: { value in
+                updateReview(reviewState) { draft in
+                    draft[keyPath: keyPath] = value
+                }
+            })
+    }
+
+    private func draftDateBinding(_ reviewState: Binding<AIBillingReviewState>) -> Binding<Date> {
+        Binding(
+            get: { reviewState.wrappedValue.draft.occurredAt },
+            set: { value in
+                updateReview(reviewState) { draft in
+                    draft.occurredAt = value
+                }
+            })
+    }
+
+    private func kindBinding(_ reviewState: Binding<AIBillingReviewState>) -> Binding<LedgerKind> {
+        Binding(
+            get: { reviewState.wrappedValue.draft.kind },
+            set: { kind in
+                updateReview(reviewState) { draft in
+                    draft.kind = kind
+                }
+            })
+    }
+
+    private func updateReview(
+        _ reviewState: Binding<AIBillingReviewState>,
+        mutate: (inout AutoLedgerReviewDraft) -> Void) {
+        var state = reviewState.wrappedValue
+        mutate(&state.draft)
+        normalizeDraft(&state.draft)
+        reviewState.wrappedValue = state
+    }
+
+    private func normalizeDraft(_ draft: inout AutoLedgerReviewDraft) {
+        let categories = store.categories(for: draft.kind)
+        if !categories.contains(where: { $0.id == draft.categoryID }) {
+            draft.categoryID = fallbackCategory(for: draft.kind).id
+        }
+
+        if !paymentMethodOptions.contains(draft.paymentMethod) {
+            draft.paymentMethod = "待确认"
+        }
+
+        draft.accountID = store.matchingAccountID(for: draft.paymentMethod)
+    }
+
+    private func category(for draft: AutoLedgerReviewDraft) -> LedgerCategory {
+        store.categories(for: draft.kind).first(where: { $0.id == draft.categoryID })
+            ?? fallbackCategory(for: draft.kind)
+    }
+
+    private func fallbackCategory(for kind: LedgerKind) -> LedgerCategory {
+        let categories = store.categories(for: kind)
+        if kind == .expense,
+           let other = categories.first(where: { $0.id == "expense.other" }) {
+            return other
+        }
+        return categories.first ?? LedgerCategory.defaultCategory(for: kind)
+    }
+
+    private var paymentMethodOptions: [String] {
+        uniqueStrings(store.paymentMethods + ["待确认"])
+    }
+
+    private func uniqueStrings(_ values: [String]) -> [String] {
+        var result: [String] = []
+        for value in values where !result.contains(value) {
+            result.append(value)
+        }
+        return result
     }
 
     // MARK: - Direct save
 
-    private func saveEntry(from result: AIParseResult) {
-        var draft = store.makeDraft()
-        draft.kind = result.kind
-        draft.amountText = result.amount.map { String(format: "%.2f", $0) } ?? ""
-        draft.selectedCategory = AIParser.resolvedCategory(for: result, scheme: store.currentCategoryScheme)
-        draft.paymentMethod = result.paymentMethod.isEmpty ? draft.paymentMethod : result.paymentMethod
-        draft.note = ""
-        store.addEntry(from: draft)
-        lastSavedAmount = result.amount.map { LedgerFormatters.currency($0) } ?? ""
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-            savedEntry = true
-        }
-        // Reset after 2.5s so user can scan another receipt
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            withAnimation { savedEntry = false }
-            ocrVM.selectedImage = nil
-            ocrVM.parseResult = nil
-            voiceVM.transcript = ""
-            voiceVM.reviewState = nil
-            voiceVM.infoMessage = nil
-        }
-    }
-
-    private func confirmVoiceReview(_ reviewState: VoiceReviewState) {
-        if reviewState.requiresManualCompletion {
-            editVoiceReview(reviewState)
+    private func saveEntry(from reviewState: AIBillingReviewState) {
+        let draft = reviewState.draft
+        guard let amount = draft.parsedAmount, amount > 0 else {
+            switch reviewState.source {
+            case .screenshot:
+                ocrVM.errorMessage = "请先补充有效金额"
+            case .voice:
+                voiceVM.errorMessage = "请先补充有效金额"
+            }
             return
         }
 
-        guard let saved = store.addEntry(from: reviewState.draft) else {
-            editVoiceReview(reviewState)
-            return
-        }
+        let category = category(for: draft)
+        let merchant = draft.merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+        let note = draft.note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = merchant.isEmpty ? (note.isEmpty ? category.name.localized : note) : merchant
+        let screenshotData = reviewState.source == .screenshot && store.appSettings.showRecordImages
+            ? ocrVM.selectedImage?.jpegData(compressionQuality: 0.86)
+            : nil
+
+        let saved = store.addEntry(
+            bookID: draft.bookID ?? store.currentBook.id,
+            title: title,
+            amount: amount,
+            kind: draft.kind,
+            category: category,
+            accountID: draft.accountID ?? store.matchingAccountID(for: draft.paymentMethod),
+            paymentMethod: draft.paymentMethod,
+            tags: draft.tags,
+            note: note,
+            date: draft.occurredAt,
+            isExcludedFromStatistics: draft.isExcludedFromStatistics,
+            isExcludedFromBudget: draft.isExcludedFromBudget,
+            screenshotData: screenshotData)
 
         lastSavedAmount = LedgerFormatters.currency(saved.amount)
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -4991,16 +4978,15 @@ struct AIBillingView: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
             withAnimation { savedEntry = false }
+            ocrVM.selectedImage = nil
+            ocrVM.reviewState = nil
+            ocrVM.recognizedText = ""
+            ocrVM.errorMessage = nil
             voiceVM.transcript = ""
             voiceVM.reviewState = nil
             voiceVM.infoMessage = nil
             voiceVM.errorMessage = nil
         }
-    }
-
-    private func editVoiceReview(_ reviewState: VoiceReviewState) {
-        store.pendingAIDraft = reviewState.draft
-        isVoiceEditorPresented = true
     }
 }
 

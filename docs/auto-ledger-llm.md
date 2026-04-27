@@ -1,7 +1,7 @@
 # Auto Ledger LLM (Screenshot / OCR)
 
 This layer is intentionally independent from the Auto Ledger UI and shortcut flow.
-It is only responsible for screenshot and OCR-based parsing. Voice bookkeeping uses a separate model contract documented in `docs/voice-ledger-ai.md`.
+It is only responsible for screenshot and OCR-based parsing. Voice bookkeeping stays on the local `Speech.framework` transcription path and does not use a cloud voice model.
 
 ## Environment keys
 
