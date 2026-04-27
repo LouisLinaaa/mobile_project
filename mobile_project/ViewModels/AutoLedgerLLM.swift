@@ -111,7 +111,7 @@ struct AutoLedgerOpenAIConfiguration {
 
     private func buildContentParts(userPrompt: String, imageData: Data?) -> [AutoLedgerOpenAIContentPart] {
         var parts: [AutoLedgerOpenAIContentPart] = [
-            AutoLedgerOpenAIContentPart(type: "text", text: userPrompt, imageURL: nil, inputAudio: nil)
+            AutoLedgerOpenAIContentPart(type: "text", text: userPrompt, imageURL: nil)
         ]
 
         if let imageData {
@@ -121,8 +121,7 @@ struct AutoLedgerOpenAIConfiguration {
                 AutoLedgerOpenAIContentPart(
                     type: "image_url",
                     text: nil,
-                    imageURL: AutoLedgerOpenAIImageURL(url: dataURL),
-                    inputAudio: nil))
+                    imageURL: AutoLedgerOpenAIImageURL(url: dataURL)))
         }
 
         return parts
@@ -168,204 +167,6 @@ struct AutoLedgerOpenAIConfiguration {
         default:
             return defaultValue
         }
-    }
-}
-
-struct VoiceLedgerAIConfiguration {
-    enum Key {
-        static let endpoint = "VOICE_LEDGER_AI_ENDPOINT"
-        static let apiKey = "VOICE_LEDGER_AI_API_KEY"
-        static let model = "VOICE_LEDGER_AI_MODEL"
-        static let systemPrompt = "VOICE_LEDGER_AI_SYSTEM_PROMPT"
-        static let userPromptTemplate = "VOICE_LEDGER_AI_USER_PROMPT_TEMPLATE"
-        static let enableThinking = "VOICE_LEDGER_AI_ENABLE_THINKING"
-    }
-
-    let endpoint: URL
-    let apiKey: String?
-    let model: String
-    let systemPrompt: String
-    let userPromptTemplate: String
-    let enableThinking: Bool
-
-    static func load(
-        bundle: Bundle = .main,
-        processInfo: ProcessInfo = .processInfo,
-        environment: [String: String]? = nil) -> VoiceLedgerAIConfiguration? {
-        let endpointValue = resolvedValue(
-            primaryKey: Key.endpoint,
-            bundle: bundle,
-            processInfo: processInfo,
-            environment: environment)
-        let apiKeyValue = resolvedValue(
-            primaryKey: Key.apiKey,
-            bundle: bundle,
-            processInfo: processInfo,
-            environment: environment)
-        let modelValue = resolvedValue(
-            primaryKey: Key.model,
-            bundle: bundle,
-            processInfo: processInfo,
-            environment: environment)
-        let systemPromptValue = resolvedValue(
-            primaryKey: Key.systemPrompt,
-            bundle: bundle,
-            processInfo: processInfo,
-            environment: environment)
-        let userPromptTemplateValue = resolvedValue(
-            primaryKey: Key.userPromptTemplate,
-            bundle: bundle,
-            processInfo: processInfo,
-            environment: environment)
-        let enableThinkingValue = resolvedValue(
-            primaryKey: Key.enableThinking,
-            bundle: bundle,
-            processInfo: processInfo,
-            environment: environment)
-
-        guard let endpointValue,
-              let endpoint = URL(string: endpointValue),
-              let modelValue,
-              let systemPromptValue,
-              let userPromptTemplateValue else {
-            return nil
-        }
-
-        return VoiceLedgerAIConfiguration(
-            endpoint: endpoint,
-            apiKey: apiKeyValue,
-            model: modelValue,
-            systemPrompt: systemPromptValue,
-            userPromptTemplate: userPromptTemplateValue,
-            enableThinking: parseBool(enableThinkingValue, defaultValue: false))
-    }
-
-    func makeRequestBody(for request: VoiceLedgerParseRequest) -> VoiceLedgerAIRequestBody {
-        let userPrompt = renderUserPrompt(for: request)
-        let audioFormat = audioFormatIdentifier(from: request.audioMimeType)
-        let audioDataURL = "data:;base64,\(request.audioData.base64EncodedString())"
-        let contentParts = [
-            AutoLedgerOpenAIContentPart(
-                type: "input_audio",
-                text: nil,
-                imageURL: nil,
-                inputAudio: AutoLedgerOpenAIInputAudio(data: audioDataURL, format: audioFormat)),
-            AutoLedgerOpenAIContentPart(
-                type: "text",
-                text: userPrompt,
-                imageURL: nil,
-                inputAudio: nil)
-        ]
-
-        return VoiceLedgerAIRequestBody(
-            model: model,
-            messages: [
-                AutoLedgerOpenAIChatMessage(role: "system", content: .text(systemPrompt)),
-                AutoLedgerOpenAIChatMessage(role: "user", content: .parts(contentParts))
-            ],
-            stream: true,
-            streamOptions: VoiceLedgerAIStreamOptions(includeUsage: true),
-            modalities: ["text"],
-            extraBody: AutoLedgerOpenAIExtraBody(enableThinking: enableThinking))
-    }
-
-    func renderUserPrompt(for request: VoiceLedgerParseRequest) -> String {
-        let replacements: [String: String] = [
-            "{{currencyCode}}": request.context.currencyCode,
-            "{{localeIdentifier}}": request.context.localeIdentifier,
-            "{{categoryCandidates}}": request.context.categoryCandidates.joined(separator: ", "),
-            "{{paymentMethodCandidates}}": request.context.paymentMethodCandidates.joined(separator: ", "),
-            "{{transcriptHint}}": request.transcriptHint?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
-            "{{hasAudio}}": "true"
-        ]
-
-        return replacements.reduce(userPromptTemplate) { partial, pair in
-            partial.replacingOccurrences(of: pair.key, with: pair.value)
-        }
-    }
-
-    private func audioFormatIdentifier(from mimeType: String) -> String {
-        let normalized = mimeType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-
-        switch normalized {
-        case "audio/mpeg", "audio/mp3":
-            return "mp3"
-        case "audio/wav", "audio/x-wav":
-            return "wav"
-        case "audio/aac":
-            return "aac"
-        case "audio/amr":
-            return "amr"
-        default:
-            if let slash = normalized.lastIndex(of: "/") {
-                return String(normalized[normalized.index(after: slash)...])
-            }
-            return "wav"
-        }
-    }
-
-    private static func resolvedValue(
-        primaryKey: String,
-        bundle: Bundle,
-        processInfo: ProcessInfo,
-        environment: [String: String]?) -> String? {
-        if let environment,
-           let value = environment[primaryKey]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !value.isEmpty {
-            return value
-        }
-
-        if let envValue = processInfo.environment[primaryKey]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !envValue.isEmpty {
-            return envValue
-        }
-
-        if let plistValue = bundle.object(forInfoDictionaryKey: primaryKey) as? String {
-            let trimmedValue = plistValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedValue.isEmpty {
-                return trimmedValue
-            }
-        }
-
-        return nil
-    }
-
-    private static func parseBool(_ value: String?, defaultValue: Bool) -> Bool {
-        guard let value else { return defaultValue }
-        switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "1", "true", "yes", "y", "on":
-            return true
-        case "0", "false", "no", "n", "off":
-            return false
-        default:
-            return defaultValue
-        }
-    }
-}
-
-struct VoiceLedgerAIRequestBody: Encodable {
-    let model: String
-    let messages: [AutoLedgerOpenAIChatMessage]
-    let stream: Bool
-    let streamOptions: VoiceLedgerAIStreamOptions
-    let modalities: [String]
-    let extraBody: AutoLedgerOpenAIExtraBody?
-
-    enum CodingKeys: String, CodingKey {
-        case model
-        case messages
-        case stream
-        case streamOptions = "stream_options"
-        case modalities
-        case extraBody = "extra_body"
-    }
-}
-
-struct VoiceLedgerAIStreamOptions: Encodable {
-    let includeUsage: Bool
-
-    enum CodingKeys: String, CodingKey {
-        case includeUsage = "include_usage"
     }
 }
 

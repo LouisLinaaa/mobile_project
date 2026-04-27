@@ -135,7 +135,7 @@ struct AutoLedgerCenterView: View {
 
             if viewModel.recognitionEngine == .local {
                 Text(
-                    "当前还没配置截图识别的大模型。把 `.env.template` 里的 `AUTO_LEDGER_OPENAI_*` 变量填到 Scheme 环境变量或 Info.plist 后，会自动切到 API 识别。语音记账使用另一组 `VOICE_LEDGER_AI_*` 变量。")
+                    "当前还没配置截图识别的大模型。把 `.env.template` 里的 `AUTO_LEDGER_OPENAI_*` 变量填到 Scheme 环境变量或 Info.plist 后，会自动切到 API 识别。语音记账保持本地语音识别。")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.ledgerGold)
                     .padding(12)
