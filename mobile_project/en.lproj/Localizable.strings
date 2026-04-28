@@ -262,5 +262,10 @@
 "每周" = "Weekly";
 "每月" = "Monthly";
 "每年" = "Yearly";
+"进行中" = "Active";
+"确认删除" = "Confirm Delete";
+"删除" = "Delete";
+"编辑" = "Edit";
+"可选备注" = "Optional Note";
 "%@・下次 %@" = "%@ · Next %@";
 "定时记账提醒" = "Scheduled Ledger Reminder";
