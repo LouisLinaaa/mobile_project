@@ -68,7 +68,7 @@ struct SearchView: View {
         let pool = DrawerShortcut.commonTools + DrawerShortcut.quickTools
         return pool.filter { shortcut in
             guard case .screen = shortcut.destination else { return false }
-            return shortcut.title.localized.localizedCaseInsensitiveContains(q)
+            return shortcut.title.localizedCaseInsensitiveContains(q)
         }
     }
 
