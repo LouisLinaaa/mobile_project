@@ -356,12 +356,22 @@ private struct ScheduledLedgerEditorSheet: View {
     }
 
     private var parsedAmount: Double? {
-        Double(amountText.replacingOccurrences(of: ",", with: "."))
+        let normalizedAmountText = amountText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+
+        guard !normalizedAmountText.isEmpty,
+              let amount = Double(normalizedAmountText),
+              amount > 0 else {
+            return nil
+        }
+
+        return amount
     }
 
     private var canSave: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && (parsedAmount ?? 0) > 0
+            && parsedAmount != nil
     }
 
     private var categoryOptions: [LedgerCategory] {
