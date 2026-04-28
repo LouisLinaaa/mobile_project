@@ -250,7 +250,7 @@
 "还没有攒钱计划" = "No saving plans yet";
 "设定一个目标金额，记录每次存入，看着进度条一步步填满。" = "Set a target amount, record each deposit, and watch the progress bar fill up.";
 "创建第一个计划" = "Create Your First Plan";
-"目标日期 %@" = "Target %@";
+"目标日期 %@" = "Target date %@";
 "存入" = "Deposit";
 "取出" = "Withdraw";
 "编辑" = "Edit";
