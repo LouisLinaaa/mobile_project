@@ -420,7 +420,7 @@ private struct SavingPlanEditorSheet: View {
                     }
 
                     fieldSection(title: "图标".localized) {
-                        HStack(spacing: 10) {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 10) {
                             ForEach(Self.iconOptions, id: \.self) { icon in
                                 Button {
                                     selectedIcon = icon
@@ -442,7 +442,7 @@ private struct SavingPlanEditorSheet: View {
                     }
 
                     fieldSection(title: "颜色".localized) {
-                        HStack(spacing: 10) {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 7), spacing: 10) {
                             ForEach(LedgerTintStyle.allCases) { tint in
                                 Button {
                                     selectedTint = tint
