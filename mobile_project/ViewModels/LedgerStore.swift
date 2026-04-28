@@ -1261,7 +1261,11 @@ final class LedgerStore: ObservableObject {
             date: Date())
 
         guard let index = scheduledEntries.firstIndex(where: { $0.id == entry.id }) else { return }
-        let next = entry.recurrence.nextDate(after: entry.nextDate)
+        let now = Date()
+        var next = entry.nextDate
+        repeat {
+            next = entry.recurrence.nextDate(after: next)
+        } while next <= now
         if let endDate = entry.endDate, next > endDate {
             scheduledEntries[index].isEnabled = false
         } else {
@@ -1821,7 +1825,13 @@ final class LedgerStore: ObservableObject {
         categoryBudgets = sanitizedCategoryBudgets(
             snapshot.categoryBudgets,
             books: restoredBooks)
+        for entry in scheduledEntries {
+            cancelNotificationForEntry(entry)
+        }
         scheduledEntries = snapshot.scheduledEntries
+        for entry in scheduledEntries where entry.isEnabled {
+            scheduleNotificationForEntry(entry)
+        }
         clearHistoryPresentation()
         clearEntryNavigationRequest()
         flushPendingSettingsPersistence()

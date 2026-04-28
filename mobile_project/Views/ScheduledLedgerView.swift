@@ -10,13 +10,13 @@ struct ScheduledLedgerView: View {
 
     private var activeEntries: [ScheduledLedgerEntry] {
         store.scheduledEntries
-            .filter { $0.isEnabled && !$0.isExpired }
+            .filter { $0.bookID == store.selectedBookID && $0.isEnabled && !$0.isExpired }
             .sorted { $0.nextDate < $1.nextDate }
     }
 
     private var inactiveEntries: [ScheduledLedgerEntry] {
         store.scheduledEntries
-            .filter { !$0.isEnabled || $0.isExpired }
+            .filter { $0.bookID == store.selectedBookID && (!$0.isEnabled || $0.isExpired) }
             .sorted { $0.createdAt > $1.createdAt }
     }
 
