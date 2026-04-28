@@ -17,6 +17,8 @@ struct HomeView: View {
     @State private var selectedEntry: LedgerEntry?
     @State private var highlightedFeature: String?
     @State private var pendingInteractionTask: Task<Void, Never>?
+    @State private var isBookSwitcherPresented = false
+    @State private var bookSwitchToast: String?
 
     private var isSensitiveInfoVisible: Bool {
         store.isBalanceVisible && !store.appSettings.hideSensitiveInfo
@@ -96,6 +98,17 @@ struct HomeView: View {
             openPendingAutoLedgerIfNeeded()
             handleEntryNavigation(store.entryNavigationRequest)
         }
+        .onChange(of: store.selectedBookID) { _, _ in
+            showBookSwitchToast(store.currentBook.name)
+        }
+        .overlay(alignment: .top) {
+            if let toast = bookSwitchToast {
+                BookSwitchToast(bookName: toast)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .padding(.top, 60)
+            }
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: bookSwitchToast != nil)
     }
 
     private var mainContent: some View {
@@ -217,7 +230,14 @@ struct HomeView: View {
             Spacer()
 
             CapsuleIconButton(icon: "book.closed.fill", title: store.currentBook.name) {
-                openScreen(.books)
+                isBookSwitcherPresented = true
+            }
+            .popover(isPresented: $isBookSwitcherPresented, arrowEdge: .top) {
+                BookQuickSwitcher(onManage: {
+                    isBookSwitcherPresented = false
+                    openScreen(.books)
+                })
+                .environmentObject(store)
             }
         }
     }
@@ -733,8 +753,25 @@ struct HomeView: View {
             openScreen(.autoLedgerCenter)
         case "widgets":
             openScreen(.widgets)
+        case "book":
+            if let bookIDString = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "id" })?.value,
+                let bookID = UUID(uuidString: bookIDString),
+                let book = store.books.first(where: { $0.id == bookID }) {
+                store.setCurrentBook(book)
+            }
         default:
             break
+        }
+    }
+
+    private func showBookSwitchToast(_ name: String) {
+        bookSwitchToast = name
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_800_000_000)
+            if bookSwitchToast == name {
+                bookSwitchToast = nil
+            }
         }
     }
 
@@ -1824,5 +1861,101 @@ private struct LedgerTagsEditorSheet: View {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .filter { seen.insert($0).inserted }
+    }
+}
+
+// MARK: - Book Quick Switcher
+
+private struct BookQuickSwitcher: View {
+    @EnvironmentObject private var store: LedgerStore
+    @Environment(\.dismiss) private var dismiss
+
+    let onManage: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(store.books) { book in
+                let isCurrent = book.id == store.selectedBookID
+                Button {
+                    if !isCurrent {
+                        store.setCurrentBook(book)
+                    }
+                    dismiss()
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: book.icon)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(book.tintStyle.color)
+                            .frame(width: 36, height: 36)
+                            .background(book.tintStyle.color.opacity(0.14))
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                        Text(book.name)
+                            .font(.system(size: 16, weight: isCurrent ? .bold : .medium, design: .rounded))
+                            .foregroundStyle(Color.ledgerText)
+
+                        Spacer()
+
+                        if isCurrent {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(Color.ledgerAccent)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                if book.id != store.books.last?.id {
+                    Divider().padding(.leading, 64)
+                }
+            }
+
+            Divider()
+
+            Button {
+                onManage()
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("管理账本".localized)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                }
+                .foregroundStyle(Color.ledgerAccent)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(minWidth: 220)
+        .presentationCompactAdaptation(.popover)
+    }
+}
+
+// MARK: - Book Switch Toast
+
+private struct BookSwitchToast: View {
+    let bookName: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "book.closed.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.ledgerAccent)
+
+            Text(L10n.format("已切换到「%@」", bookName))
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.ledgerText)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 11)
+        .background(.ultraThinMaterial)
+        .clipShape(Capsule())
+        .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 4)
     }
 }

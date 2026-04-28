@@ -14,6 +14,7 @@ struct DrawerMenuView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 12) {
                     header
+                    currentBookBanner
                     ShortcutSectionCard(
                         title: "常用功能",
                         items: DrawerShortcut.commonTools,
@@ -80,6 +81,37 @@ struct DrawerMenuView: View {
                     .foregroundStyle(Color.ledgerMuted)
             }
             .padding(.horizontal, 2)
+        }
+        .buttonStyle(LedgerResponsiveButtonStyle())
+    }
+
+    private var currentBookBanner: some View {
+        Button {
+            onShortcutTap(.screen(.books))
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: store.currentBook.icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(store.currentBook.tintStyle.color)
+
+                Text(store.currentBook.name)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.ledgerText)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Text("切换".localized)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.ledgerAccent)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(store.currentBook.tintStyle.color.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(store.currentBook.tintStyle.color.opacity(0.18), lineWidth: 1))
         }
         .buttonStyle(LedgerResponsiveButtonStyle())
     }

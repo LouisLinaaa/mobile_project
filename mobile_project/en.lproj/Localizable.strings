@@ -234,3 +234,8 @@
 "一键进入记账、统计、资产和自动记账。" = "Open ledger, statistics, assets, and Auto Ledger in one tap.";
 "最近更新 %@" = "Updated %@";
 "点进自动记账中心可继续审核并确认入账。" = "Open Auto Ledger Center to continue reviewing and confirming entries.";
+
+// Book Navigation
+"管理账本" = "Manage Books";
+"切换" = "Switch";
+"已切换到「%@」" = "Switched to \"%@\"";
