@@ -388,6 +388,86 @@ struct LedgerBudgetCategorySummary: Identifiable {
     }
 }
 
+enum ScheduledRecurrence: String, CaseIterable, Identifiable, Codable {
+    case daily = "每天"
+    case weekly = "每周"
+    case monthly = "每月"
+    case yearly = "每年"
+
+    var id: String { rawValue }
+
+    var localizedTitle: String { rawValue.localized }
+
+    func nextDate(after date: Date) -> Date {
+        let cal = Calendar.current
+        switch self {
+        case .daily: return cal.date(byAdding: .day, value: 1, to: date) ?? date
+        case .weekly: return cal.date(byAdding: .weekOfYear, value: 1, to: date) ?? date
+        case .monthly: return cal.date(byAdding: .month, value: 1, to: date) ?? date
+        case .yearly: return cal.date(byAdding: .year, value: 1, to: date) ?? date
+        }
+    }
+}
+
+struct ScheduledLedgerEntry: Identifiable, Codable, Equatable {
+    let id: UUID
+    var title: String
+    var amount: Double
+    var kind: LedgerKind
+    var category: LedgerCategory
+    var paymentMethod: String
+    var note: String
+    var recurrence: ScheduledRecurrence
+    var nextDate: Date
+    var endDate: Date?
+    var isEnabled: Bool
+    var bookID: UUID
+    let createdAt: Date
+
+    init(
+        id: UUID = UUID(),
+        title: String,
+        amount: Double,
+        kind: LedgerKind,
+        category: LedgerCategory,
+        paymentMethod: String,
+        note: String = "",
+        recurrence: ScheduledRecurrence,
+        nextDate: Date,
+        endDate: Date? = nil,
+        isEnabled: Bool = true,
+        bookID: UUID,
+        createdAt: Date = Date()) {
+        self.id = id
+        self.title = title
+        self.amount = amount
+        self.kind = kind
+        self.category = category
+        self.paymentMethod = paymentMethod
+        self.note = note
+        self.recurrence = recurrence
+        self.nextDate = nextDate
+        self.endDate = endDate
+        self.isEnabled = isEnabled
+        self.bookID = bookID
+        self.createdAt = createdAt
+    }
+
+    var isExpired: Bool {
+        if let endDate { return Date() > endDate }
+        return false
+    }
+
+    var recurrenceSummary: String {
+        let dateStr = LedgerFormatters.bookDate(nextDate)
+        return L10n.format("%@・下次 %@", recurrence.localizedTitle, dateStr)
+    }
+
+    static func == (lhs: ScheduledLedgerEntry, rhs: ScheduledLedgerEntry) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
 struct QuickEntryDraft {
     var bookID: UUID?
     var kind: LedgerKind = .expense
@@ -890,7 +970,7 @@ extension DrawerShortcut {
             title: "定时记账",
             icon: "clock.arrow.circlepath",
             accent: .ledgerLavender,
-            destination: .placeholder("定时记账"))
+            destination: .screen(.scheduledLedger))
     ]
 }
 

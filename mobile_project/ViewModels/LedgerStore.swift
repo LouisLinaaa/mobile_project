@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 struct LedgerPersistenceSnapshot: Codable {
     var appSettings: AppSettings
@@ -11,6 +12,7 @@ struct LedgerPersistenceSnapshot: Codable {
     var accounts: [LedgerAccount]
     var categorySchemes: [LedgerCategoryScheme]
     var selectedCategorySchemeID: UUID
+    var scheduledEntries: [ScheduledLedgerEntry]
 
     private enum CodingKeys: String, CodingKey {
         case appSettings
@@ -23,6 +25,7 @@ struct LedgerPersistenceSnapshot: Codable {
         case accounts
         case categorySchemes
         case selectedCategorySchemeID
+        case scheduledEntries
     }
 
     init(
@@ -35,7 +38,8 @@ struct LedgerPersistenceSnapshot: Codable {
         selectedBookID: UUID,
         accounts: [LedgerAccount],
         categorySchemes: [LedgerCategoryScheme],
-        selectedCategorySchemeID: UUID) {
+        selectedCategorySchemeID: UUID,
+        scheduledEntries: [ScheduledLedgerEntry] = []) {
         self.appSettings = appSettings
         self.budgetLimit = budgetLimit
         self.bookBudgets = bookBudgets
@@ -46,6 +50,7 @@ struct LedgerPersistenceSnapshot: Codable {
         self.accounts = accounts
         self.categorySchemes = categorySchemes
         self.selectedCategorySchemeID = selectedCategorySchemeID
+        self.scheduledEntries = scheduledEntries
     }
 
     init(from decoder: Decoder) throws {
@@ -60,6 +65,7 @@ struct LedgerPersistenceSnapshot: Codable {
         accounts = try container.decodeIfPresent([LedgerAccount].self, forKey: .accounts) ?? []
         categorySchemes = try container.decodeIfPresent([LedgerCategoryScheme].self, forKey: .categorySchemes) ?? []
         selectedCategorySchemeID = try container.decodeIfPresent(UUID.self, forKey: .selectedCategorySchemeID) ?? UUID()
+        scheduledEntries = try container.decodeIfPresent([ScheduledLedgerEntry].self, forKey: .scheduledEntries) ?? []
     }
 }
 
@@ -193,6 +199,9 @@ final class LedgerStore: ObservableObject {
     @Published var selectedCategorySchemeID: UUID {
         didSet { schedulePersistLedgerState() }
     }
+    @Published private(set) var scheduledEntries: [ScheduledLedgerEntry] {
+        didSet { schedulePersistLedgerState() }
+    }
     @Published private(set) var lastBackupDate: Date?
     @Published private(set) var iCloudBackupSummary: CloudBackupSummary?
 
@@ -234,6 +243,7 @@ final class LedgerStore: ObservableObject {
         accounts = seed.accounts
         categorySchemes = seed.categorySchemes
         selectedCategorySchemeID = seed.selectedCategorySchemeID
+        scheduledEntries = []
         lastBackupDate = nil
         iCloudBackupSummary = nil
         appSettings = loadAppSettings()
@@ -1207,6 +1217,98 @@ final class LedgerStore: ObservableObject {
         categoryBudgets.removeAll { $0.categoryID == categoryID }
     }
 
+    // MARK: - Scheduled Ledger
+
+    func addScheduledEntry(_ entry: ScheduledLedgerEntry) {
+        scheduledEntries.append(entry)
+        scheduleNotificationForEntry(entry)
+    }
+
+    func updateScheduledEntry(_ entry: ScheduledLedgerEntry) {
+        guard let index = scheduledEntries.firstIndex(where: { $0.id == entry.id }) else { return }
+        cancelNotificationForEntry(scheduledEntries[index])
+        scheduledEntries[index] = entry
+        if entry.isEnabled {
+            scheduleNotificationForEntry(entry)
+        }
+    }
+
+    func deleteScheduledEntry(_ entry: ScheduledLedgerEntry) {
+        cancelNotificationForEntry(entry)
+        scheduledEntries.removeAll { $0.id == entry.id }
+    }
+
+    func toggleScheduledEntry(_ entry: ScheduledLedgerEntry) {
+        guard let index = scheduledEntries.firstIndex(where: { $0.id == entry.id }) else { return }
+        scheduledEntries[index].isEnabled.toggle()
+        if scheduledEntries[index].isEnabled {
+            scheduleNotificationForEntry(scheduledEntries[index])
+        } else {
+            cancelNotificationForEntry(entry)
+        }
+    }
+
+    func executeScheduledEntry(_ entry: ScheduledLedgerEntry) {
+        addEntry(
+            bookID: entry.bookID,
+            title: entry.title,
+            amount: entry.amount,
+            kind: entry.kind,
+            category: entry.category,
+            paymentMethod: entry.paymentMethod,
+            tags: [],
+            note: entry.note,
+            date: Date())
+
+        guard let index = scheduledEntries.firstIndex(where: { $0.id == entry.id }) else { return }
+        let next = entry.recurrence.nextDate(after: entry.nextDate)
+        if let endDate = entry.endDate, next > endDate {
+            scheduledEntries[index].isEnabled = false
+        } else {
+            scheduledEntries[index].nextDate = next
+        }
+        cancelNotificationForEntry(entry)
+        if scheduledEntries[index].isEnabled {
+            scheduleNotificationForEntry(scheduledEntries[index])
+        }
+    }
+
+    var pendingScheduledEntries: [ScheduledLedgerEntry] {
+        scheduledEntries
+            .filter { $0.isEnabled && !$0.isExpired }
+            .sorted { $0.nextDate < $1.nextDate }
+    }
+
+    var overdueScheduledEntries: [ScheduledLedgerEntry] {
+        let now = Date()
+        return pendingScheduledEntries.filter { $0.nextDate <= now }
+    }
+
+    private func scheduleNotificationForEntry(_ entry: ScheduledLedgerEntry) {
+        guard entry.isEnabled else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "定时记账提醒".localized
+        content.body = L10n.format(
+            "%@ %@",
+            entry.title,
+            LedgerFormatters.currency(entry.amount))
+        content.sound = .default
+        content.userInfo = ["scheduledEntryID": entry.id.uuidString]
+
+        let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: entry.nextDate)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: "ledger.scheduled.\(entry.id.uuidString)",
+            content: content,
+            trigger: trigger)
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    private func cancelNotificationForEntry(_ entry: ScheduledLedgerEntry) {
+        UNUserNotificationCenter.current()
+            .removePendingNotificationRequests(withIdentifiers: ["ledger.scheduled.\(entry.id.uuidString)"])
+    }
+
     private func isIncludedInStatistics(_ entry: LedgerEntry) -> Bool {
         !entry.isExcludedFromStatistics
     }
@@ -1628,7 +1730,8 @@ final class LedgerStore: ObservableObject {
             selectedBookID: selectedBookID,
             accounts: accounts,
             categorySchemes: categorySchemes,
-            selectedCategorySchemeID: selectedCategorySchemeID)
+            selectedCategorySchemeID: selectedCategorySchemeID,
+            scheduledEntries: scheduledEntries)
     }
 
     private func encodedBackupSnapshot() -> Data? {
@@ -1649,7 +1752,8 @@ final class LedgerStore: ObservableObject {
                 selectedBookID: selectedBookID,
                 accounts: accounts,
                 categorySchemes: categorySchemes,
-                selectedCategorySchemeID: selectedCategorySchemeID))
+                selectedCategorySchemeID: selectedCategorySchemeID,
+                scheduledEntries: scheduledEntries))
     }
 
     private func applyBackupSnapshot(_ snapshot: BackupSnapshot) {
@@ -1664,7 +1768,8 @@ final class LedgerStore: ObservableObject {
                 selectedBookID: snapshot.selectedBookID,
                 accounts: snapshot.accounts,
                 categorySchemes: snapshot.categorySchemes,
-                selectedCategorySchemeID: snapshot.selectedCategorySchemeID))
+                selectedCategorySchemeID: snapshot.selectedCategorySchemeID,
+                scheduledEntries: snapshot.scheduledEntries))
     }
 
     private func applyPersistedState(_ snapshot: LedgerPersistenceSnapshot) {
@@ -1695,6 +1800,7 @@ final class LedgerStore: ObservableObject {
         categoryBudgets = sanitizedCategoryBudgets(
             snapshot.categoryBudgets,
             books: restoredBooks)
+        scheduledEntries = snapshot.scheduledEntries
         clearHistoryPresentation()
         clearEntryNavigationRequest()
         flushPendingSettingsPersistence()
@@ -1731,6 +1837,7 @@ final class LedgerStore: ObservableObject {
         let accounts: [LedgerAccount]
         let categorySchemes: [LedgerCategoryScheme]
         let selectedCategorySchemeID: UUID
+        let scheduledEntries: [ScheduledLedgerEntry]
 
         private enum CodingKeys: String, CodingKey {
             case generatedAt
@@ -1746,6 +1853,7 @@ final class LedgerStore: ObservableObject {
             case accounts
             case categorySchemes
             case selectedCategorySchemeID
+            case scheduledEntries
         }
 
         init(
@@ -1761,7 +1869,8 @@ final class LedgerStore: ObservableObject {
             selectedBookID: UUID,
             accounts: [LedgerAccount],
             categorySchemes: [LedgerCategoryScheme],
-            selectedCategorySchemeID: UUID) {
+            selectedCategorySchemeID: UUID,
+            scheduledEntries: [ScheduledLedgerEntry] = []) {
             self.generatedAt = generatedAt
             self.backupVersion = backupVersion
             self.appVersion = appVersion
@@ -1775,6 +1884,7 @@ final class LedgerStore: ObservableObject {
             self.accounts = accounts
             self.categorySchemes = categorySchemes
             self.selectedCategorySchemeID = selectedCategorySchemeID
+            self.scheduledEntries = scheduledEntries
         }
 
         init(from decoder: Decoder) throws {
@@ -1793,6 +1903,7 @@ final class LedgerStore: ObservableObject {
             categorySchemes = try container.decodeIfPresent([LedgerCategoryScheme].self, forKey: .categorySchemes) ?? []
             selectedCategorySchemeID = try container
                 .decodeIfPresent(UUID.self, forKey: .selectedCategorySchemeID) ?? UUID()
+            scheduledEntries = try container.decodeIfPresent([ScheduledLedgerEntry].self, forKey: .scheduledEntries) ?? []
         }
     }
 

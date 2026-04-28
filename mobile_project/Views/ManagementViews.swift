@@ -22,6 +22,7 @@ enum ManagementScreen: String, Identifiable {
     case settings
     case backup
     case privacy
+    case scheduledLedger
 
     var id: String { rawValue }
 }
@@ -76,6 +77,8 @@ struct ManagementSheetView: View {
             BackupSettingsView()
         case .privacy:
             PrivacySecurityView()
+        case .scheduledLedger:
+            ScheduledLedgerView()
         }
     }
 }
