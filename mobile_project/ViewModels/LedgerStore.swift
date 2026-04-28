@@ -1284,24 +1284,45 @@ final class LedgerStore: ObservableObject {
         return pendingScheduledEntries.filter { $0.nextDate <= now }
     }
 
-    private func scheduleNotificationForEntry(_ entry: ScheduledLedgerEntry) {
-        guard entry.isEnabled else { return }
-        let content = UNMutableNotificationContent()
-        content.title = "定时记账提醒".localized
-        content.body = L10n.format(
-            "%@ %@",
-            entry.title,
-            LedgerFormatters.currency(entry.amount))
-        content.sound = .default
-        content.userInfo = ["scheduledEntryID": entry.id.uuidString]
+    private func canScheduleLedgerNotifications(_ completion: @escaping (Bool) -> Void) {
+        guard appSettings.pushEnabled else {
+            completion(false)
+            return
+        }
 
-        let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: entry.nextDate)
-        let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
-        let request = UNNotificationRequest(
-            identifier: "ledger.scheduled.\(entry.id.uuidString)",
-            content: content,
-            trigger: trigger)
-        UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                completion(true)
+            default:
+                completion(false)
+            }
+        }
+    }
+
+    private func scheduleNotificationForEntry(_ entry: ScheduledLedgerEntry) {
+        guard entry.isEnabled, appSettings.pushEnabled else { return }
+
+        canScheduleLedgerNotifications { canSchedule in
+            guard canSchedule else { return }
+
+            let content = UNMutableNotificationContent()
+            content.title = "定时记账提醒".localized
+            content.body = L10n.format(
+                "%@ %@",
+                entry.title,
+                LedgerFormatters.currency(entry.amount))
+            content.sound = .default
+            content.userInfo = ["scheduledEntryID": entry.id.uuidString]
+
+            let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: entry.nextDate)
+            let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
+            let request = UNNotificationRequest(
+                identifier: "ledger.scheduled.\(entry.id.uuidString)",
+                content: content,
+                trigger: trigger)
+            UNUserNotificationCenter.current().add(request)
+        }
     }
 
     private func cancelNotificationForEntry(_ entry: ScheduledLedgerEntry) {
