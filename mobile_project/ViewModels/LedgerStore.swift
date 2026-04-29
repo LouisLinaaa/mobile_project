@@ -1313,7 +1313,7 @@ final class LedgerStore: ObservableObject {
             let content = UNMutableNotificationContent()
             content.title = "定时记账提醒".localized
             content.body = L10n.format(
-                "%@ %@",
+                "scheduled_ledger_notification_body",
                 entry.title,
                 LedgerFormatters.currency(entry.amount))
             content.sound = .default

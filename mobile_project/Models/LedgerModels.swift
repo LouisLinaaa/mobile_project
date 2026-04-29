@@ -389,14 +389,21 @@ struct LedgerBudgetCategorySummary: Identifiable {
 }
 
 enum ScheduledRecurrence: String, CaseIterable, Identifiable, Codable {
-    case daily = "每天"
-    case weekly = "每周"
-    case monthly = "每月"
-    case yearly = "每年"
+    case daily = "daily"
+    case weekly = "weekly"
+    case monthly = "monthly"
+    case yearly = "yearly"
 
     var id: String { rawValue }
 
-    var localizedTitle: String { rawValue.localized }
+    var localizedTitle: String {
+        switch self {
+        case .daily: return "每天".localized
+        case .weekly: return "每周".localized
+        case .monthly: return "每月".localized
+        case .yearly: return "每年".localized
+        }
+    }
 
     func nextDate(after date: Date) -> Date {
         let cal = Calendar.current

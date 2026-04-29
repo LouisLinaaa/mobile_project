@@ -269,3 +269,4 @@
 "可选备注" = "Optional Note";
 "%@・下次 %@" = "%@ · Next %@";
 "定时记账提醒" = "Scheduled Ledger Reminder";
+"scheduled_ledger_notification_body" = "%@ %@";
