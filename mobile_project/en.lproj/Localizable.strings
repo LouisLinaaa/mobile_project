@@ -234,3 +234,9 @@
 "一键进入记账、统计、资产和自动记账。" = "Open ledger, statistics, assets, and Auto Ledger in one tap.";
 "最近更新 %@" = "Updated %@";
 "点进自动记账中心可继续审核并确认入账。" = "Open Auto Ledger Center to continue reviewing and confirming entries.";
+"搜索" = "Search";
+"搜索记录、账本、分类或功能" = "Search records, books, categories, or features";
+"记录" = "Records";
+"快捷操作" = "Quick Actions";
+"没有找到匹配结果" = "No matching results";
+"试试换个关键词，或检查一下输入是否正确。" = "Try a different keyword or check your input.";

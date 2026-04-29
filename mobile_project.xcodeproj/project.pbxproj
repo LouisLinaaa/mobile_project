@@ -34,6 +34,7 @@
 		A00000000000000000000067 /* AutoLedgerLLM.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000091 /* AutoLedgerLLM.swift */; };
 		A000000000000000000000A0 /* LedgerNotificationPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A2 /* LedgerNotificationPlanner.swift */; };
 		A000000000000000000000A1 /* LedgerNotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A3 /* LedgerNotificationService.swift */; };
+		A000000000000000000000A5 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A6 /* SearchView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -92,6 +93,7 @@
 		A0000000000000000000009A /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		A000000000000000000000A2 /* LedgerNotificationPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LedgerNotificationPlanner.swift; sourceTree = "<group>"; };
 		A000000000000000000000A3 /* LedgerNotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LedgerNotificationService.swift; sourceTree = "<group>"; };
+		A000000000000000000000A6 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -200,6 +202,7 @@
 				A0000000000000000000001B /* AutoLedgerCenterView.swift */,
 				A0000000000000000000001C /* WidgetCenterView.swift */,
 				A0000000000000000000001D /* BudgetManagementView.swift */,
+				A000000000000000000000A6 /* SearchView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -360,6 +363,7 @@
 				A0000000000000000000000B /* AutoLedgerCenterView.swift in Sources */,
 				A0000000000000000000000C /* WidgetCenterView.swift in Sources */,
 				A0000000000000000000000D /* BudgetManagementView.swift in Sources */,
+				A000000000000000000000A5 /* SearchView.swift in Sources */,
 				A0000000000000000000000E /* AutoLedgerShortcuts.swift in Sources */,
 				A00000000000000000000067 /* AutoLedgerLLM.swift in Sources */,
 				A00000000000000000000064 /* WidgetSnapshotStore.swift in Sources */,
