@@ -431,6 +431,11 @@ struct ScheduledLedgerEntry: Identifiable, Codable, Equatable {
     var bookID: UUID
     let createdAt: Date
 
+    private enum CodingKeys: String, CodingKey {
+        case id, title, amount, kind, category, paymentMethod, note
+        case recurrence, nextDate, endDate, isEnabled, bookID, createdAt
+    }
+
     init(
         id: UUID = UUID(),
         title: String,
@@ -458,6 +463,24 @@ struct ScheduledLedgerEntry: Identifiable, Codable, Equatable {
         self.isEnabled = isEnabled
         self.bookID = bookID
         self.createdAt = createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        amount = try container.decodeIfPresent(Double.self, forKey: .amount) ?? 0
+        kind = try container.decodeIfPresent(LedgerKind.self, forKey: .kind) ?? .expense
+        category = try container.decodeIfPresent(LedgerCategory.self, forKey: .category)
+            ?? LedgerCategory.defaultCategory(for: kind)
+        paymentMethod = try container.decodeIfPresent(String.self, forKey: .paymentMethod) ?? ""
+        note = try container.decodeIfPresent(String.self, forKey: .note) ?? ""
+        recurrence = try container.decodeIfPresent(ScheduledRecurrence.self, forKey: .recurrence) ?? .monthly
+        nextDate = try container.decodeIfPresent(Date.self, forKey: .nextDate) ?? Date()
+        endDate = try container.decodeIfPresent(Date.self, forKey: .endDate)
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        bookID = try container.decode(UUID.self, forKey: .bookID)
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
     }
 
     var isExpired: Bool {

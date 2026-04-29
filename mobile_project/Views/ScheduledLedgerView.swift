@@ -8,25 +8,34 @@ struct ScheduledLedgerView: View {
     @State private var editingEntry: ScheduledLedgerEntry?
     @State private var deleteTarget: ScheduledLedgerEntry?
 
+    private var currentBookEntries: [ScheduledLedgerEntry] {
+        store.scheduledEntries.filter { $0.bookID == store.selectedBookID }
+    }
+
     private var activeEntries: [ScheduledLedgerEntry] {
-        store.scheduledEntries
-            .filter { $0.bookID == store.selectedBookID && $0.isEnabled && !$0.isExpired }
+        currentBookEntries
+            .filter { $0.isEnabled && !$0.isExpired }
             .sorted { $0.nextDate < $1.nextDate }
     }
 
     private var inactiveEntries: [ScheduledLedgerEntry] {
-        store.scheduledEntries
-            .filter { $0.bookID == store.selectedBookID && (!$0.isEnabled || $0.isExpired) }
+        currentBookEntries
+            .filter { !$0.isEnabled || $0.isExpired }
             .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    private var currentBookOverdue: [ScheduledLedgerEntry] {
+        let now = Date()
+        return activeEntries.filter { $0.nextDate <= now }
     }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 20) {
-                if store.scheduledEntries.isEmpty {
+                if currentBookEntries.isEmpty {
                     emptyState
                 } else {
-                    if !store.overdueScheduledEntries.isEmpty {
+                    if !currentBookOverdue.isEmpty {
                         overdueSection
                     }
 
@@ -136,7 +145,7 @@ struct ScheduledLedgerView: View {
         VStack(alignment: .leading, spacing: 10) {
             sectionHeader("待入账".localized)
 
-            ForEach(store.overdueScheduledEntries) { entry in
+            ForEach(currentBookOverdue) { entry in
                 overdueCard(entry)
             }
         }

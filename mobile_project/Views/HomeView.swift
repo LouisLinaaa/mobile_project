@@ -20,6 +20,7 @@ struct HomeView: View {
     @State private var pendingInteractionTask: Task<Void, Never>?
     @State private var isBookSwitcherPresented = false
     @State private var bookSwitchToast: String?
+    @State private var selectedCalendarDay: Int?
 
     private var isSensitiveInfoVisible: Bool {
         store.isBalanceVisible && !store.appSettings.hideSensitiveInfo
@@ -151,72 +152,383 @@ struct HomeView: View {
 
     private var calendarOverviewPage: some View {
         VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text(LedgerFormatters.drawerMonthTitle(for: Date()))
-                        .font(.system(size: 28, weight: .black, design: .rounded))
-                        .foregroundStyle(Color.ledgerText)
+            calendarGridCard
 
-                    Spacer()
+            calendarBudgetCard
 
-                    Text("独立日历")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.ledgerMuted)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.ledgerAccentMuted.opacity(0.75))
-                        .clipShape(Capsule())
-                }
+            calendarScheduledCard
 
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5), spacing: 8) {
-                    ForEach(1...daysInCurrentMonth, id: \.self) { day in
-                        let isToday = day == Calendar.current.component(.day, from: Date())
-                        let hasRecord = store.monthRecordedDays.contains(day)
-                        Button {
-                            openHistoryForDay(day)
-                        } label: {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(hasRecord ? Color.ledgerAccentSoft : Color.ledgerCanvas)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                            .stroke(isToday ? Color.ledgerAccent : Color.clear, lineWidth: 2))
+            if let day = selectedCalendarDay {
+                calendarDayDetailCard(day: day)
+            }
+        }
+        .onChange(of: store.selectedBookID) { _, _ in
+            selectedCalendarDay = nil
+        }
+    }
 
+    private var calendarGridCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(LedgerFormatters.drawerMonthTitle(for: Date()))
+                    .font(.system(size: 28, weight: .black, design: .rounded))
+                    .foregroundStyle(Color.ledgerText)
+
+                Spacer()
+
+                Text(store.currentBook.name)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.ledgerMuted)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.ledgerAccentMuted.opacity(0.75))
+                    .clipShape(Capsule())
+            }
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5), spacing: 8) {
+                ForEach(1...daysInCurrentMonth, id: \.self) { day in
+                    let isToday = day == Calendar.current.component(.day, from: Date())
+                    let hasRecord = store.monthRecordedDays.contains(day)
+                    let hasScheduled = store.monthScheduledDays.contains(day)
+                    let isSelected = selectedCalendarDay == day
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selectedCalendarDay = selectedCalendarDay == day ? nil : day
+                        }
+                    } label: {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(isSelected ? Color.ledgerAccent :
+                                    hasRecord ? Color.ledgerAccentSoft : Color.ledgerCanvas)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .stroke(isToday && !isSelected ? Color.ledgerAccent : Color.clear,
+                                                lineWidth: 2))
+
+                            VStack(spacing: 3) {
                                 Text(isToday ? "今" : "\(day)")
                                     .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(hasRecord || isToday ? Color.ledgerAccent : Color.ledgerMuted
-                                        .opacity(0.8))
-                            }
-                            .frame(height: 46)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!hasRecord)
-                    }
-                }
+                                    .foregroundStyle(isSelected ? Color.white :
+                                        hasRecord || isToday ? Color.ledgerAccent :
+                                        Color.ledgerMuted.opacity(0.8))
 
-                HStack {
-                    CalendarStatItem(value: "\(store.totalRecordDays)天", title: "坚持记录")
-                    Spacer()
-                    CalendarStatItem(value: "\(store.totalRecords)条", title: "总记录")
-                    Spacer()
-                    CalendarStatItem(value: "\(store.currentStreak)天", title: "连续记录")
+                                if hasScheduled {
+                                    Circle()
+                                        .fill(isSelected ? Color.white : Color.ledgerGold)
+                                        .frame(width: 5, height: 5)
+                                } else {
+                                    Circle()
+                                        .fill(Color.clear)
+                                        .frame(width: 5, height: 5)
+                                }
+                            }
+                        }
+                        .frame(height: 46)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            .padding(16)
-            .ledgerCard()
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text("今天建议")
+            HStack {
+                CalendarStatItem(value: "\(store.currentBookRecordDays)天", title: "坚持记录")
+                Spacer()
+                CalendarStatItem(value: "\(store.currentBookRecordCount)条", title: "总记录")
+                Spacer()
+                CalendarStatItem(value: "\(store.currentStreak)天", title: "连续记录")
+            }
+        }
+        .padding(16)
+        .ledgerCard()
+    }
+
+    private var calendarBudgetCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("本月预算")
                     .font(.system(size: 16, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.ledgerText)
-                Text("把本月预算回顾、周期账单和提醒统一放到这个日历页，日常记账页保持更专注。")
+
+                Spacer()
+
+                Button {
+                    openScreen(.budget)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("管理")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .foregroundStyle(Color.ledgerAccent)
+                }
+                .buttonStyle(LedgerResponsiveButtonStyle())
+            }
+
+            if let budgetLimit = store.budgetLimit {
+                let remaining = store.currentBudgetRemaining ?? 0
+                let progress = store.budgetProgress
+                let isOverspent = store.currentBudgetOverspent > 0
+
+                VStack(alignment: .leading, spacing: 8) {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(Color.ledgerAccentMuted)
+                                .frame(height: 8)
+
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(isOverspent ? Color.ledgerExpense : Color.ledgerAccent)
+                                .frame(width: geo.size.width * progress, height: 8)
+                        }
+                    }
+                    .frame(height: 8)
+
+                    HStack {
+                        if isSensitiveInfoVisible {
+                            Text(isOverspent
+                                ? "已超支 \(LedgerFormatters.currency(store.currentBudgetOverspent))"
+                                : "剩余 \(LedgerFormatters.currency(remaining))")
+                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .foregroundStyle(isOverspent ? Color.ledgerExpense : Color.ledgerIncome)
+                        } else {
+                            Text("金额已隐藏")
+                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .foregroundStyle(Color.ledgerMuted)
+                        }
+
+                        Spacer()
+
+                        if isSensitiveInfoVisible, let daily = store.suggestedDailyBudget {
+                            Text("建议日均 \(LedgerFormatters.currency(daily))")
+                                .font(.system(size: 13, weight: .medium, design: .rounded))
+                                .foregroundStyle(Color.ledgerMuted)
+                        }
+                    }
+
+                    if isSensitiveInfoVisible {
+                        Text("预算 \(LedgerFormatters.currency(budgetLimit))，已支出 \(LedgerFormatters.currency(store.currentMonthBudgetExpense))")
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(Color.ledgerMuted)
+                    }
+                }
+            } else {
+                Text("还未设置预算，点击右上角「管理」开始规划本月支出。")
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(Color.ledgerMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(16)
-            .ledgerCard()
         }
+        .padding(16)
+        .ledgerCard()
+    }
+
+    private var calendarScheduledCard: some View {
+        let currentBookScheduled = store.pendingScheduledEntries.filter { $0.bookID == store.currentBook.id }
+        let overdue = store.overdueScheduledEntries.filter { $0.bookID == store.currentBook.id }
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("定时记账")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.ledgerText)
+
+                if !overdue.isEmpty {
+                    Text("\(overdue.count) 笔待入账")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.ledgerExpense)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.ledgerExpense.opacity(0.12))
+                        .clipShape(Capsule())
+                }
+
+                Spacer()
+
+                Button {
+                    openScreen(.scheduledLedger)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("管理")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .foregroundStyle(Color.ledgerAccent)
+                }
+                .buttonStyle(LedgerResponsiveButtonStyle())
+            }
+
+            if currentBookScheduled.isEmpty {
+                Text("暂无定时记账，点击右上角「管理」添加周期账单。")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.ledgerMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(currentBookScheduled.prefix(3)) { entry in
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(entry.category.tint.opacity(0.16))
+                                    .frame(width: 38, height: 38)
+
+                                Image(systemName: entry.category.icon)
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(entry.category.tint)
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(entry.title)
+                                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(Color.ledgerText)
+                                    .lineLimit(1)
+
+                                Text(entry.recurrenceSummary)
+                                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                                    .foregroundStyle(Color.ledgerMuted)
+                            }
+
+                            Spacer()
+
+                            Text(isSensitiveInfoVisible
+                                ? (entry.kind == .expense
+                                    ? "-\(LedgerFormatters.currency(entry.amount))"
+                                    : "+\(LedgerFormatters.currency(entry.amount))")
+                                : (entry.kind == .expense ? "-¥••••" : "+¥••••"))
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                                .foregroundStyle(entry.kind == .expense ? Color.ledgerExpense : Color.ledgerIncome)
+                        }
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 12)
+                        .background(Color.ledgerAccentMuted.opacity(0.5))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+
+                    if currentBookScheduled.count > 3 {
+                        Button {
+                            openScreen(.scheduledLedger)
+                        } label: {
+                            Text("查看全部 \(currentBookScheduled.count) 条")
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                .foregroundStyle(Color.ledgerAccent)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                        }
+                        .buttonStyle(LedgerResponsiveButtonStyle())
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .ledgerCard()
+    }
+
+    private func calendarDayDetailCard(day: Int) -> some View {
+        let entries = store.currentBookEntriesForDay(day)
+        let scheduled = store.currentBookScheduledEntriesForDay(day)
+        let isToday = day == Calendar.current.component(.day, from: Date())
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(isToday ? "今天的记录" : "\(day)日记录")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.ledgerText)
+
+                Spacer()
+
+                if !entries.isEmpty {
+                    Text("\(entries.count) 笔")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.ledgerMuted)
+                }
+            }
+
+            if !scheduled.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(scheduled) { entry in
+                        HStack(spacing: 10) {
+                            Image(systemName: "clock.badge")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Color.ledgerGold)
+
+                            Text(entry.title)
+                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .foregroundStyle(Color.ledgerText)
+                                .lineLimit(1)
+
+                            Text(entry.recurrence.localizedTitle)
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .foregroundStyle(Color.ledgerMuted)
+
+                            Spacer()
+
+                            Text(isSensitiveInfoVisible
+                                ? LedgerFormatters.currency(entry.amount)
+                                : "¥••••")
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color.ledgerGold)
+                        }
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 12)
+                        .background(Color.ledgerGold.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                }
+            }
+
+            if entries.isEmpty && scheduled.isEmpty {
+                Text("当天暂无账单记录。")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.ledgerMuted)
+            }
+
+            if !entries.isEmpty {
+                VStack(spacing: 10) {
+                    ForEach(entries) { entry in
+                        Button {
+                            selectedEntry = entry
+                        } label: {
+                            TransactionRow(entry: entry, isSensitiveVisible: isSensitiveInfoVisible)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            if !entries.isEmpty {
+                let dayExpense = entries.filter { $0.kind == .expense }.reduce(0) { $0 + $1.amount }
+                let dayIncome = entries.filter { $0.kind == .income }.reduce(0) { $0 + $1.amount }
+
+                HStack(spacing: 16) {
+                    if dayExpense > 0 {
+                        HStack(spacing: 4) {
+                            Text("支出")
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .foregroundStyle(Color.ledgerMuted)
+                            Text(isSensitiveInfoVisible
+                                ? LedgerFormatters.currency(dayExpense) : "¥••••")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color.ledgerExpense)
+                        }
+                    }
+                    if dayIncome > 0 {
+                        HStack(spacing: 4) {
+                            Text("收入")
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .foregroundStyle(Color.ledgerMuted)
+                            Text(isSensitiveInfoVisible
+                                ? LedgerFormatters.currency(dayIncome) : "¥••••")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color.ledgerIncome)
+                        }
+                    }
+                    Spacer()
+                }
+            }
+        }
+        .padding(16)
+        .ledgerCard()
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
     private var topBar: some View {
@@ -841,20 +1153,6 @@ struct HomeView: View {
         }
     }
 
-    private func openHistoryForDay(_ day: Int) {
-        var components = Calendar.current.dateComponents([.year, .month], from: Date())
-        components.day = day
-
-        guard let date = Calendar.current.date(from: components)
-        else {
-            return
-        }
-
-        store.presentHistory(
-            scope: .currentBook,
-            filteredDate: date,
-            title: LedgerFormatters.historyTitle(for: date))
-    }
 }
 
 private struct CalendarStatItem: View {
