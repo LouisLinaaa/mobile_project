@@ -16,6 +16,7 @@ struct HomeView: View {
     @State private var activeScreen: ManagementScreen?
     @State private var selectedEntry: LedgerEntry?
     @State private var highlightedFeature: String?
+    @State private var isSearchPresented = false
     @State private var pendingInteractionTask: Task<Void, Never>?
     @State private var isBookSwitcherPresented = false
     @State private var bookSwitchToast: String?
@@ -75,6 +76,11 @@ struct HomeView: View {
         }
         .sheet(item: $selectedEntry) { entry in
             LedgerEntryDetailSheet(store: store, entry: entry)
+        }
+        .sheet(isPresented: $isSearchPresented) {
+            SearchView(store: store) { action in
+                handleSearchNavigation(action)
+            }
         }
         .alert("功能预留", isPresented: featureAlertBinding) {
             Button("知道了", role: .cancel) {}
@@ -579,7 +585,7 @@ struct HomeView: View {
         HStack(spacing: 12) {
             if activeHomeTab == .ledger {
                 Button {
-                    presentPlaceholderFeature("搜索")
+                    isSearchPresented = true
                 } label: {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 18, weight: .semibold))
@@ -712,9 +718,39 @@ struct HomeView: View {
         }
     }
 
+    private func handleSearchNavigation(_ action: SearchNavigationAction) {
+        switch action {
+        case .showEntry(let entry):
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                selectedEntry = entry
+            }
+        case .openScreen(let screen):
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                activeScreen = screen
+            }
+        case .switchBook(let book):
+            store.setCurrentBook(book)
+        }
+    }
+
     private func presentPlaceholderFeature(_ feature: String) {
         runAfterInteractiveTransition {
             highlightedFeature = feature
+        }
+    }
+
+    private func handleSearchNavigation(_ action: SearchNavigationAction) {
+        switch action {
+        case .showEntry(let entry):
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                selectedEntry = entry
+            }
+        case .openScreen(let screen):
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                openScreen(screen)
+            }
+        case .switchBook(let book):
+            store.setCurrentBook(book)
         }
     }
 

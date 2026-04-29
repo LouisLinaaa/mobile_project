@@ -388,6 +388,132 @@ struct LedgerBudgetCategorySummary: Identifiable {
     }
 }
 
+enum ScheduledRecurrence: String, CaseIterable, Identifiable, Codable {
+    case daily = "daily"
+    case weekly = "weekly"
+    case monthly = "monthly"
+    case yearly = "yearly"
+
+    var id: String { rawValue }
+
+    var localizedTitle: String {
+        switch self {
+        case .daily: return "每天".localized
+        case .weekly: return "每周".localized
+        case .monthly: return "每月".localized
+        case .yearly: return "每年".localized
+        }
+    }
+
+    func nextDate(after date: Date) -> Date {
+        let cal = Calendar.current
+        switch self {
+        case .daily: return cal.date(byAdding: .day, value: 1, to: date) ?? date
+        case .weekly: return cal.date(byAdding: .weekOfYear, value: 1, to: date) ?? date
+        case .monthly: return cal.date(byAdding: .month, value: 1, to: date) ?? date
+        case .yearly: return cal.date(byAdding: .year, value: 1, to: date) ?? date
+        }
+    }
+}
+
+struct ScheduledLedgerEntry: Identifiable, Codable, Equatable {
+    let id: UUID
+    var title: String
+    var amount: Double
+    var kind: LedgerKind
+    var category: LedgerCategory
+    var paymentMethod: String
+    var note: String
+    var recurrence: ScheduledRecurrence
+    var nextDate: Date
+    var endDate: Date?
+    var isEnabled: Bool
+    var bookID: UUID
+struct SavingPlan: Identifiable, Codable, Equatable {
+    let id: UUID
+    var name: String
+    var icon: String
+    var tintStyle: LedgerTintStyle
+    var targetAmount: Double
+    var savedAmount: Double
+    var deadline: Date?
+    var note: String
+    let createdAt: Date
+
+    init(
+        id: UUID = UUID(),
+        title: String,
+        amount: Double,
+        kind: LedgerKind,
+        category: LedgerCategory,
+        paymentMethod: String,
+        note: String = "",
+        recurrence: ScheduledRecurrence,
+        nextDate: Date,
+        endDate: Date? = nil,
+        isEnabled: Bool = true,
+        bookID: UUID,
+        createdAt: Date = Date()) {
+        self.id = id
+        self.title = title
+        self.amount = amount
+        self.kind = kind
+        self.category = category
+        self.paymentMethod = paymentMethod
+        self.note = note
+        self.recurrence = recurrence
+        self.nextDate = nextDate
+        self.endDate = endDate
+        self.isEnabled = isEnabled
+        self.bookID = bookID
+        self.createdAt = createdAt
+    }
+
+    var isExpired: Bool {
+        if let endDate { return Date() > endDate }
+        return false
+    }
+
+    var recurrenceSummary: String {
+        let dateStr = LedgerFormatters.bookDate(nextDate)
+        return L10n.format("%@・下次 %@", recurrence.localizedTitle, dateStr)
+    }
+
+    static func == (lhs: ScheduledLedgerEntry, rhs: ScheduledLedgerEntry) -> Bool {
+        lhs.id == rhs.id
+        name: String,
+        icon: String = "dollarsign.circle.fill",
+        tintStyle: LedgerTintStyle = .income,
+        targetAmount: Double,
+        savedAmount: Double = 0,
+        deadline: Date? = nil,
+        note: String = "",
+        createdAt: Date = Date()) {
+        self.id = id
+        self.name = name
+        self.icon = icon
+        self.tintStyle = tintStyle
+        self.targetAmount = targetAmount
+        self.savedAmount = savedAmount
+        self.deadline = deadline
+        self.note = note
+        self.createdAt = createdAt
+    }
+
+    var progress: Double {
+        guard targetAmount > 0 else { return 0 }
+        return min(savedAmount / targetAmount, 1)
+    }
+
+    var remaining: Double {
+        max(targetAmount - savedAmount, 0)
+    }
+
+    var isCompleted: Bool {
+        savedAmount >= targetAmount
+    }
+}
+
 struct QuickEntryDraft {
     var bookID: UUID?
     var kind: LedgerKind = .expense
@@ -845,7 +971,7 @@ extension DrawerShortcut {
             title: "攒钱计划",
             icon: "dollarsign.circle",
             accent: .ledgerIncome,
-            destination: .placeholder("攒钱计划")),
+            destination: .screen(.savingPlans)),
         DrawerShortcut(
             id: "widgets",
             title: "小组件",
@@ -890,7 +1016,7 @@ extension DrawerShortcut {
             title: "定时记账",
             icon: "clock.arrow.circlepath",
             accent: .ledgerLavender,
-            destination: .placeholder("定时记账"))
+            destination: .screen(.scheduledLedger))
     ]
 }
 
