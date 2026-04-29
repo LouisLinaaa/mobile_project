@@ -1866,7 +1866,7 @@ private struct LedgerTagsEditorSheet: View {
 
 // MARK: - Book Quick Switcher
 
-private struct BookQuickSwitcher: View {
+struct BookQuickSwitcher: View {
     @EnvironmentObject private var store: LedgerStore
     @Environment(\.dismiss) private var dismiss
 

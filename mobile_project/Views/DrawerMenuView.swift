@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DrawerMenuView: View {
     @EnvironmentObject private var store: LedgerStore
+    @State private var isBookSwitcherPresented = false
 
     let width: CGFloat
     let topSafeInset: CGFloat
@@ -87,7 +88,7 @@ struct DrawerMenuView: View {
 
     private var currentBookBanner: some View {
         Button {
-            onShortcutTap(.screen(.books))
+            isBookSwitcherPresented = true
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: store.currentBook.icon)
@@ -114,6 +115,13 @@ struct DrawerMenuView: View {
                     .stroke(store.currentBook.tintStyle.color.opacity(0.18), lineWidth: 1))
         }
         .buttonStyle(LedgerResponsiveButtonStyle())
+        .popover(isPresented: $isBookSwitcherPresented, arrowEdge: .top) {
+            BookQuickSwitcher(onManage: {
+                isBookSwitcherPresented = false
+                onShortcutTap(.screen(.books))
+            })
+            .environmentObject(store)
+        }
     }
 
     private var linkCard: some View {
