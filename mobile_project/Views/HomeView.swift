@@ -102,13 +102,16 @@ struct HomeView: View {
             showBookSwitchToast(store.currentBook.name)
         }
         .overlay(alignment: .top) {
-            if let toast = bookSwitchToast {
-                BookSwitchToast(bookName: toast)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .padding(.top, 60)
+            GeometryReader { geo in
+                if let toast = bookSwitchToast {
+                    BookSwitchToast(bookName: toast)
+                        .frame(maxWidth: .infinity)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .padding(.top, geo.safeAreaInsets.top + 4)
+                }
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: bookSwitchToast != nil)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: bookSwitchToast)
     }
 
     private var mainContent: some View {
@@ -766,8 +769,10 @@ struct HomeView: View {
     }
 
     private func showBookSwitchToast(_ name: String) {
-        bookSwitchToast = name
+        bookSwitchToast = nil
         Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            bookSwitchToast = name
             try? await Task.sleep(nanoseconds: 1_800_000_000)
             if bookSwitchToast == name {
                 bookSwitchToast = nil
