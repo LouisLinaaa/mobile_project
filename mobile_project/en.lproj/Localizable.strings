@@ -243,7 +243,7 @@
 "进行中" = "In Progress";
 "已完成" = "Completed";
 "总览" = "Overview";
-"%d 个计划" = "%d plans";
+"%d 个计划" = "Plans: %d";
 "目标总额" = "Total Goal";
 "已存入" = "Saved";
 "还需要" = "Remaining";
