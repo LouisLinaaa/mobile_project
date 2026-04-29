@@ -41,7 +41,7 @@ struct LedgerPersistenceSnapshot: Codable {
         accounts: [LedgerAccount],
         categorySchemes: [LedgerCategoryScheme],
         selectedCategorySchemeID: UUID,
-        scheduledEntries: [ScheduledLedgerEntry] = []) {
+        scheduledEntries: [ScheduledLedgerEntry] = [],
         savingPlans: [SavingPlan] = []) {
         self.appSettings = appSettings
         self.budgetLimit = budgetLimit
@@ -205,6 +205,8 @@ final class LedgerStore: ObservableObject {
         didSet { schedulePersistLedgerState() }
     }
     @Published private(set) var scheduledEntries: [ScheduledLedgerEntry] {
+        didSet { schedulePersistLedgerState() }
+    }
     @Published private(set) var savingPlans: [SavingPlan] {
         didSet { schedulePersistLedgerState() }
     }
@@ -1786,7 +1788,7 @@ final class LedgerStore: ObservableObject {
             accounts: accounts,
             categorySchemes: categorySchemes,
             selectedCategorySchemeID: selectedCategorySchemeID,
-            scheduledEntries: scheduledEntries)
+            scheduledEntries: scheduledEntries,
             savingPlans: savingPlans)
     }
 
@@ -1809,7 +1811,7 @@ final class LedgerStore: ObservableObject {
                 accounts: accounts,
                 categorySchemes: categorySchemes,
                 selectedCategorySchemeID: selectedCategorySchemeID,
-                scheduledEntries: scheduledEntries))
+                scheduledEntries: scheduledEntries,
                 savingPlans: savingPlans))
     }
 
@@ -1826,7 +1828,7 @@ final class LedgerStore: ObservableObject {
                 accounts: snapshot.accounts,
                 categorySchemes: snapshot.categorySchemes,
                 selectedCategorySchemeID: snapshot.selectedCategorySchemeID,
-                scheduledEntries: snapshot.scheduledEntries))
+                scheduledEntries: snapshot.scheduledEntries,
                 savingPlans: snapshot.savingPlans))
     }
 
@@ -1937,7 +1939,7 @@ final class LedgerStore: ObservableObject {
             accounts: [LedgerAccount],
             categorySchemes: [LedgerCategoryScheme],
             selectedCategorySchemeID: UUID,
-            scheduledEntries: [ScheduledLedgerEntry] = []) {
+            scheduledEntries: [ScheduledLedgerEntry] = [],
             savingPlans: [SavingPlan] = []) {
             self.generatedAt = generatedAt
             self.backupVersion = backupVersion
@@ -1972,7 +1974,8 @@ final class LedgerStore: ObservableObject {
             categorySchemes = try container.decodeIfPresent([LedgerCategoryScheme].self, forKey: .categorySchemes) ?? []
             selectedCategorySchemeID = try container
                 .decodeIfPresent(UUID.self, forKey: .selectedCategorySchemeID) ?? UUID()
-            scheduledEntries = try container.decodeIfPresent([ScheduledLedgerEntry].self, forKey: .scheduledEntries) ?? []
+            scheduledEntries = try container
+                .decodeIfPresent([ScheduledLedgerEntry].self, forKey: .scheduledEntries) ?? []
             savingPlans = try container.decodeIfPresent([SavingPlan].self, forKey: .savingPlans) ?? []
         }
     }
