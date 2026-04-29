@@ -3602,7 +3602,7 @@ enum AIParser {
         try! NSRegularExpression(pattern: #"Amount[:\s]+\$?(\d+(?:\.\d{1,2})?)"#, options: .caseInsensitive)
     ]
     private static let spokenAmountPattern = try! NSRegularExpression(
-        pattern: #"([零〇一二两三四五六七八九十百千万幺]+)(?:元钱|块钱|块|元|人民币)(?:([零〇一二两三四五六七八九幺])(?:毛|角)?)?"#)
+        pattern: #"([零〇一二两三四五六七八九十百千万幺]+)(?:元钱|块钱|块|元|人民币)(?:(?:零|〇)?([零〇一二两三四五六七八九幺])(?:毛|角)?)?"#)
 
     private static let incomeKeywords = [
         "工资",
@@ -3942,7 +3942,11 @@ enum AIParser {
                 return Double(leftValue * 10000)
             }
             let rightValue = parseChineseSection(right)
-            if right.count == 1, let digit = chineseDigitValue(right), digit > 0 {
+            if right.count == 1,
+               !right.hasPrefix("零"),
+               !right.hasPrefix("〇"),
+               let digit = chineseDigitValue(right),
+               digit > 0 {
                 return Double(leftValue * 10000 + digit * 1000)
             }
             return Double(leftValue * 10000 + rightValue)
@@ -4038,8 +4042,8 @@ enum AIParser {
     private static func cleanedNaturalLanguageNote(from text: String) -> String {
         var cleaned = text
         let removalPatterns = [
-            #"[¥￥]?\s*\d+(?:[.,]\d{1,2})?\s*(?:元钱|块钱|块|元|人民币|rmb)?"#,
-            #"[零〇一二两三四五六七八九十百千万幺]+(?:元钱|块钱|块|元|人民币)(?:[零〇一二两三四五六七八九幺](?:毛|角)?)?"#,
+            #"(?:[¥￥]\s*\d+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?\s*(?:元钱|块钱|块|元|人民币|rmb))"#,
+            #"[零〇一二两三四五六七八九十百千万幺]+(?:元钱|块钱|块|元|人民币)(?:(?:零|〇)?[零〇一二两三四五六七八九幺](?:毛|角)?)?"#,
             #"(?:用)?(?:微信|支付宝|花呗|银行卡|信用卡|现金|云闪付|apple pay)(?:支付|付)?$"#
         ]
 

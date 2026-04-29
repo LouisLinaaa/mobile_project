@@ -216,13 +216,11 @@ private enum AutoLedgerLocalRecognizer {
             primaryIndex: 0)
     }
 
-    private static var sharedParserScheme: LedgerCategoryScheme {
-        LedgerCategoryScheme(
-            name: "自动记账本地兜底",
-            note: "",
-            expenseCategories: LedgerCategory.expenseCategories,
-            incomeCategories: LedgerCategory.incomeCategories)
-    }
+    private static let sharedParserScheme = LedgerCategoryScheme(
+        name: "自动记账本地兜底",
+        note: "",
+        expenseCategories: LedgerCategory.expenseCategories,
+        incomeCategories: LedgerCategory.incomeCategories)
 
     private static func normalizedLines(from text: String) -> [String] {
         var lines: [String] = []
