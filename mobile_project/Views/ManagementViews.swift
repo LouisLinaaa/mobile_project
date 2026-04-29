@@ -3595,16 +3595,27 @@ enum AIParser {
     private static let amountPatterns: [NSRegularExpression] = [
         try! NSRegularExpression(pattern: #"[¥￥]\s*(\d+(?:[.,]\d{1,2})?)"#),
         try! NSRegularExpression(pattern: #"(?:合计|总计|金额|实付|支付|消费|到账|转账)[：:]\s*[¥￥]?\s*(\d+(?:[.,]\d{1,2})?)"#),
-        try! NSRegularExpression(pattern: #"(\d+(?:\.\d{1,2})?)元"#),
+        try! NSRegularExpression(
+            pattern: #"(?:花了|用了|付了|支付了|消费了|买了|支出|收入|收了|到账|转账|工资到账|工资)[^\d¥￥]{0,8}[¥￥]?\s*(\d+(?:[.,]\d{1,2})?)\s*(?:元钱|块钱|块|元|人民币|rmb)?"#,
+            options: .caseInsensitive),
+        try! NSRegularExpression(pattern: #"(\d+(?:[.,]\d{1,2})?)\s*(?:元钱|块钱|块|元|人民币|rmb)"#, options: .caseInsensitive),
         try! NSRegularExpression(pattern: #"Amount[:\s]+\$?(\d+(?:\.\d{1,2})?)"#, options: .caseInsensitive)
     ]
+    private static let spokenAmountPattern = try! NSRegularExpression(
+        pattern: #"([零〇一二两三四五六七八九十百千万幺]+)(?:元钱|块钱|块|元|人民币)(?:([零〇一二两三四五六七八九幺])(?:毛|角)?)?"#)
 
     private static let incomeKeywords = [
         "工资",
+        "发工资",
+        "工资到账",
         "到账",
+        "到帐",
         "收入",
+        "收款",
+        "收了",
         "报销",
         "转入",
+        "进账",
         "salary",
         "income",
         "received",
@@ -3614,26 +3625,108 @@ enum AIParser {
     ]
     private static let paymentKeywords: [String: String] = [
         "微信": "微信", "wechat": "微信",
-        "支付宝": "支付宝", "alipay": "支付宝",
-        "银联": "银行卡", "银行": "银行卡", "储蓄卡": "银行卡",
+        "支付宝": "支付宝", "alipay": "支付宝", "花呗": "支付宝",
+        "银联": "银行卡", "银行": "银行卡", "储蓄卡": "银行卡", "云闪付": "银行卡", "apple pay": "银行卡",
         "信用卡": "信用卡", "visa": "信用卡", "mastercard": "信用卡",
         "现金": "现金", "cash": "现金"
     ]
     private static let categoryMap: [(keywords: [String], category: String)] = [
         (
-            ["餐厅", "外卖", "美食", "早餐", "午餐", "晚餐", "奶茶", "咖啡", "food", "restaurant", "meal", "lunch", "dinner",
-             "mcdonald",
-             "kfc", "starbucks"],
+            [
+                "餐厅",
+                "吃饭",
+                "饭店",
+                "外卖",
+                "美食",
+                "早餐",
+                "午餐",
+                "晚餐",
+                "夜宵",
+                "奶茶",
+                "咖啡",
+                "汉堡",
+                "food",
+                "restaurant",
+                "meal",
+                "lunch",
+                "dinner",
+                "麦当劳",
+                "肯德基",
+                "星巴克",
+                "瑞幸",
+                "喜茶",
+                "奈雪",
+                "霸王茶姬",
+                "蜜雪冰城",
+                "库迪",
+                "美团",
+                "饿了么",
+                "mcdonald",
+                "kfc",
+                "starbucks"
+            ],
             "餐饮"),
-        (["超市", "便利店", "购物", "淘宝", "京东", "天猫", "amazon", "mall", "shop"], "购物"),
-        (["滴滴", "地铁", "公交", "打车", "高铁", "机票", "taxi", "uber", "grab", "mrt", "bus", "train", "flight"], "交通"),
-        (["租金", "水电", "物业", "房", "rent", "utilities", "housing"], "住房"),
-        (["电影", "游戏", "娱乐", "ktv", "cinema", "game", "entertainment"], "休闲娱乐"),
-        (["医院", "药店", "体检", "诊所", "hospital", "pharmacy", "clinic", "health"], "医疗健康"),
-        (["书", "课程", "培训", "教育", "book", "course", "study", "tuition"], "学习办公"),
+        (
+            ["超市", "便利店", "购物", "淘宝", "京东", "天猫", "拼多多", "amazon", "mall", "shop", "衣服", "鞋", "盒马", "山姆", "costco",
+             "全家",
+             "罗森", "711"],
+            "购物"),
+        (
+            ["滴滴", "地铁", "公交", "打车", "出租车", "高铁", "机票", "停车", "加油", "taxi", "uber", "grab", "mrt", "bus", "train",
+             "flight"],
+            "交通"),
+        (["租金", "房租", "水电", "水费", "电费", "燃气", "物业", "房贷", "房", "rent", "utilities", "housing"], "住房"),
+        (["电影", "游戏", "娱乐", "ktv", "演唱会", "会员", "netflix", "cinema", "game", "entertainment"], "休闲娱乐"),
+        (["医院", "药店", "体检", "诊所", "挂号", "买药", "hospital", "pharmacy", "clinic", "health"], "医疗健康"),
+        (["书", "课程", "培训", "教育", "文具", "办公", "打印", "book", "course", "study", "tuition"], "学习办公"),
         (["宠物", "pet", "cat", "dog"], "宠物"),
-        (["工资", "salary", "wage"], "工资"),
-        (["理财", "基金", "股票", "invest", "fund"], "理财收益")
+        (["工资", "发工资", "工资到账", "salary", "wage"], "工资"),
+        (["理财", "基金", "股票", "分红", "利息", "invest", "fund"], "理财收益")
+    ]
+    private static let merchantKeywordMap: [(keywords: [String], merchant: String, category: String)] = [
+        (["麦当劳", "mcdonald"], "麦当劳", "餐饮"),
+        (["肯德基", "kfc"], "肯德基", "餐饮"),
+        (["星巴克", "starbucks"], "星巴克", "餐饮"),
+        (["瑞幸", "luckin"], "瑞幸咖啡", "餐饮"),
+        (["喜茶"], "喜茶", "餐饮"),
+        (["奈雪"], "奈雪", "餐饮"),
+        (["霸王茶姬"], "霸王茶姬", "餐饮"),
+        (["蜜雪冰城"], "蜜雪冰城", "餐饮"),
+        (["库迪"], "库迪咖啡", "餐饮"),
+        (["美团"], "美团", "餐饮"),
+        (["饿了么"], "饿了么", "餐饮"),
+        (["盒马"], "盒马", "购物"),
+        (["山姆"], "山姆会员店", "购物"),
+        (["costco"], "Costco", "购物"),
+        (["全家"], "全家便利店", "购物"),
+        (["罗森"], "罗森", "购物"),
+        (["淘宝"], "淘宝", "购物"),
+        (["京东"], "京东", "购物"),
+        (["天猫"], "天猫", "购物"),
+        (["拼多多"], "拼多多", "购物"),
+        (["滴滴"], "滴滴", "交通")
+    ]
+    private static let naturalNoteMap: [(keywords: [String], note: String, category: String)] = [
+        (["吃饭", "早餐", "午餐", "晚餐", "夜宵"], "吃饭", "餐饮"),
+        (["外卖"], "外卖", "餐饮"),
+        (["奶茶"], "奶茶", "餐饮"),
+        (["咖啡"], "咖啡", "餐饮"),
+        (["超市购物", "超市"], "超市购物", "购物"),
+        (["便利店"], "便利店", "购物"),
+        (["购物", "买衣服", "买鞋"], "购物", "购物"),
+        (["打车", "出租车", "滴滴"], "打车", "交通"),
+        (["地铁"], "地铁", "交通"),
+        (["公交"], "公交", "交通"),
+        (["停车"], "停车", "交通"),
+        (["加油"], "加油", "交通"),
+        (["房租", "租金"], "房租", "住房"),
+        (["水费", "电费", "水电", "燃气"], "水电燃气", "住房"),
+        (["电影"], "电影", "休闲娱乐"),
+        (["游戏"], "游戏", "休闲娱乐"),
+        (["药", "买药", "药店"], "买药", "医疗健康"),
+        (["医院", "挂号"], "医疗", "医疗健康"),
+        (["工资"], "工资", "工资"),
+        (["报销"], "报销", "报销")
     ]
 
     /// Main entry point when spatial row-pair data is available (screenshot OCR).
@@ -3703,6 +3796,9 @@ enum AIParser {
                 break
             }
         }
+        if result.amount == nil {
+            result.amount = parseSpokenAmount(from: text)
+        }
 
         // Kind
         if incomeKeywords.contains(where: { lower.contains($0) }) {
@@ -3714,6 +3810,18 @@ enum AIParser {
             if lower.contains(keyword) {
                 result.paymentMethod = method
                 break
+            }
+        }
+
+        // Merchant hints are especially useful for short voice entries such as
+        // "十块钱的麦当劳", where there is no labelled merchant field.
+        if let merchantHint = merchantKeywordMap.first(where: { hint in
+            hint.keywords.contains(where: { lower.contains($0.lowercased()) })
+        }) {
+            result.merchant = merchantHint.merchant
+            result.note = merchantHint.merchant
+            if result.categoryHint.isEmpty {
+                result.categoryHint = merchantHint.category
             }
         }
 
@@ -3792,6 +3900,8 @@ enum AIParser {
             }
         }
 
+        inferNaturalLanguageNoteIfNeeded(text: text, lines: lines, result: &result)
+
         return result
     }
 
@@ -3801,6 +3911,169 @@ enum AIParser {
         let hint = result.categoryHint.lowercased()
         return allCats.first(where: { $0.name.lowercased().contains(hint) || hint.contains($0.name.lowercased()) })
             ?? LedgerCategory.defaultCategory(for: result.kind)
+    }
+
+    private static func parseSpokenAmount(from text: String) -> Double? {
+        let range = NSRange(text.startIndex..., in: text)
+        guard let match = spokenAmountPattern.firstMatch(in: text, range: range),
+              let amountRange = Range(match.range(at: 1), in: text),
+              let amount = chineseNumberValue(String(text[amountRange])) else {
+            return nil
+        }
+
+        if match.range(at: 2).location != NSNotFound,
+           let decimalRange = Range(match.range(at: 2), in: text),
+           let decimal = chineseDigitValue(String(text[decimalRange])) {
+            return amount + Double(decimal) / 10
+        }
+
+        return amount
+    }
+
+    private static func chineseNumberValue(_ text: String) -> Double? {
+        guard !text.isEmpty else { return nil }
+        if let wanIndex = text.firstIndex(of: "万") {
+            let left = String(text[..<wanIndex])
+            let rightStart = text.index(after: wanIndex)
+            let right = String(text[rightStart...])
+            let leftValue = parseChineseSection(left.isEmpty ? "一" : left)
+            guard leftValue > 0 else { return nil }
+            if right.isEmpty {
+                return Double(leftValue * 10000)
+            }
+            let rightValue = parseChineseSection(right)
+            if right.count == 1, let digit = chineseDigitValue(right), digit > 0 {
+                return Double(leftValue * 10000 + digit * 1000)
+            }
+            return Double(leftValue * 10000 + rightValue)
+        }
+
+        let value = parseChineseSection(text)
+        return value > 0 ? Double(value) : nil
+    }
+
+    private static func parseChineseSection(_ text: String) -> Int {
+        var total = 0
+        var number = 0
+
+        for character in text {
+            let token = String(character)
+            if let digit = chineseDigitValue(token) {
+                number = digit
+            } else if let unit = chineseUnitValue(token) {
+                total += max(number, 1) * unit
+                number = 0
+            }
+        }
+
+        return total + number
+    }
+
+    private static func chineseDigitValue(_ text: String) -> Int? {
+        switch text {
+        case "零", "〇":
+            return 0
+        case "一", "幺":
+            return 1
+        case "二", "两":
+            return 2
+        case "三":
+            return 3
+        case "四":
+            return 4
+        case "五":
+            return 5
+        case "六":
+            return 6
+        case "七":
+            return 7
+        case "八":
+            return 8
+        case "九":
+            return 9
+        default:
+            return nil
+        }
+    }
+
+    private static func chineseUnitValue(_ text: String) -> Int? {
+        switch text {
+        case "十":
+            return 10
+        case "百":
+            return 100
+        case "千":
+            return 1000
+        default:
+            return nil
+        }
+    }
+
+    private static func inferNaturalLanguageNoteIfNeeded(
+        text: String,
+        lines: [String],
+        result: inout AIParseResult) {
+        guard result.note.isEmpty, lines.count <= 2 else { return }
+        let lower = text.lowercased()
+
+        if let naturalHint = naturalNoteMap.first(where: { hint in
+            hint.keywords.contains(where: { lower.contains($0.lowercased()) })
+        }) {
+            result.note = naturalHint.note
+            if result.merchant.isEmpty {
+                result.merchant = naturalHint.note
+            }
+            if result.categoryHint.isEmpty {
+                result.categoryHint = naturalHint.category
+            }
+            return
+        }
+
+        let cleaned = cleanedNaturalLanguageNote(from: text)
+        if !cleaned.isEmpty {
+            result.note = cleaned
+        }
+    }
+
+    private static func cleanedNaturalLanguageNote(from text: String) -> String {
+        var cleaned = text
+        let removalPatterns = [
+            #"[¥￥]?\s*\d+(?:[.,]\d{1,2})?\s*(?:元钱|块钱|块|元|人民币|rmb)?"#,
+            #"[零〇一二两三四五六七八九十百千万幺]+(?:元钱|块钱|块|元|人民币)(?:[零〇一二两三四五六七八九幺](?:毛|角)?)?"#,
+            #"(?:用)?(?:微信|支付宝|花呗|银行卡|信用卡|现金|云闪付|apple pay)(?:支付|付)?$"#
+        ]
+
+        for pattern in removalPatterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+                let range = NSRange(cleaned.startIndex..., in: cleaned)
+                cleaned = regex.stringByReplacingMatches(in: cleaned, range: range, withTemplate: "")
+            }
+        }
+
+        let fillerWords = [
+            "我",
+            "今天",
+            "昨天",
+            "刚刚",
+            "刚才",
+            "花了",
+            "用了",
+            "付了",
+            "支付了",
+            "消费了",
+            "买了",
+            "在",
+            "的",
+            "，",
+            ",",
+            "。",
+            "了"
+        ]
+        for word in fillerWords {
+            cleaned = cleaned.replacingOccurrences(of: word, with: "")
+        }
+
+        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

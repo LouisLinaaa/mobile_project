@@ -154,6 +154,8 @@ private enum AutoLedgerLocalRecognizer {
 
         guard !lines.isEmpty else { return nil }
 
+        let fullText = lines.joined(separator: "\n")
+        let sharedParseResult = AIParser.parseText(fullText, scheme: sharedParserScheme)
         let amountCandidates = amountCandidates(from: lines)
         let primaryCandidate = amountCandidates.sorted {
             if $0.score == $1.score {
@@ -162,33 +164,41 @@ private enum AutoLedgerLocalRecognizer {
             return $0.score > $1.score
         }.first
 
-        let fullText = lines.joined(separator: "\n")
-        let kind = detectKind(in: fullText)
+        guard primaryCandidate != nil || sharedParseResult.amount != nil else { return nil }
+
+        let kind = detectKind(in: fullText, fallback: sharedParseResult.kind)
         let recognizedEntryCount = max(1, amountCandidates.filter { $0.score >= 3 }.count)
-        let merchant = detectMerchant(around: primaryCandidate?.lineIndex, lines: lines)
-        let paymentMethod = detectPaymentMethod(in: fullText)
-        let category = detectCategory(in: [merchant, fullText].compactMap { $0 }.joined(separator: "\n"), kind: kind)
+        let localMerchant = detectMerchant(around: primaryCandidate?.lineIndex, lines: lines)
+        let merchant = preferredNonEmpty(sharedParseResult.merchant, localMerchant)
+        let paymentMethod = preferredNonEmpty(sharedParseResult.paymentMethod, detectPaymentMethod(
+            in: fullText)) ?? "待确认"
+        let category = preferredNonEmpty(
+            sharedParseResult.categoryHint,
+            detectCategory(in: [merchant, fullText].compactMap { $0 }.joined(separator: "\n"), kind: kind))
         let occurredAt = detectOccurredAt(around: primaryCandidate?.lineIndex, lines: lines) ?? Date()
+        let amount = primaryCandidate?.amount ?? sharedParseResult.amount
         let reason = buildReason(
             amountCandidate: primaryCandidate,
             merchant: merchant,
             paymentMethod: paymentMethod,
-            recognizedEntryCount: recognizedEntryCount)
-        let note = buildNote(
-            merchant: merchant,
-            kind: kind,
-            recognizedEntryCount: recognizedEntryCount)
+            recognizedEntryCount: recognizedEntryCount,
+            usedSharedParserAmount: primaryCandidate == nil && sharedParseResult.amount != nil)
+        let note = preferredNonEmpty(
+            sharedParseResult.note,
+            buildNote(
+                merchant: merchant,
+                kind: kind,
+                recognizedEntryCount: recognizedEntryCount))
         let confidence = buildConfidence(
             amountCandidate: primaryCandidate,
             merchant: merchant,
             paymentMethod: paymentMethod,
             category: category,
-            recognizedEntryCount: recognizedEntryCount)
-
-        guard let primaryCandidate else { return nil }
+            recognizedEntryCount: recognizedEntryCount,
+            usedSharedParserAmount: primaryCandidate == nil && sharedParseResult.amount != nil)
 
         let entry = AutoLedgerParseEntry(
-            amount: primaryCandidate.amount,
+            amount: amount,
             kind: kind.rawValue,
             category: category,
             paymentMethod: paymentMethod,
@@ -204,6 +214,14 @@ private enum AutoLedgerLocalRecognizer {
             entries: [entry],
             recognizedEntryCount: recognizedEntryCount,
             primaryIndex: 0)
+    }
+
+    private static var sharedParserScheme: LedgerCategoryScheme {
+        LedgerCategoryScheme(
+            name: "自动记账本地兜底",
+            note: "",
+            expenseCategories: LedgerCategory.expenseCategories,
+            incomeCategories: LedgerCategory.incomeCategories)
     }
 
     private static func normalizedLines(from text: String) -> [String] {
@@ -316,12 +334,17 @@ private enum AutoLedgerLocalRecognizer {
         return score
     }
 
-    private static func detectKind(in text: String) -> LedgerKind {
-        if ["退款", "退回", "回款", "收入", "退款成功"].contains(where: text.localizedCaseInsensitiveContains) {
+    private static func detectKind(in text: String, fallback: LedgerKind = .expense) -> LedgerKind {
+        if ["支付成功", "付款", "消费", "支出", "花了", "用了", "付了"].contains(where: text.localizedCaseInsensitiveContains) {
+            return .expense
+        }
+
+        if ["退款", "退回", "回款", "收入", "收款", "发工资", "工资到账", "退款成功"]
+            .contains(where: text.localizedCaseInsensitiveContains) {
             return .income
         }
 
-        return .expense
+        return fallback
     }
 
     private static func detectPaymentMethod(in text: String) -> String {
@@ -329,11 +352,12 @@ private enum AutoLedgerLocalRecognizer {
             return "微信"
         }
 
-        if ["支付宝", "Alipay"].contains(where: text.localizedCaseInsensitiveContains) {
+        if ["支付宝", "Alipay", "花呗"].contains(where: text.localizedCaseInsensitiveContains) {
             return "支付宝"
         }
 
-        if ["银行卡", "信用卡", "储蓄卡", "Mastercard", "Visa"].contains(where: text.localizedCaseInsensitiveContains) {
+        if ["银行卡", "信用卡", "储蓄卡", "Mastercard", "Visa", "云闪付", "Apple Pay"]
+            .contains(where: text.localizedCaseInsensitiveContains) {
             return "银行卡"
         }
 
@@ -350,12 +374,12 @@ private enum AutoLedgerLocalRecognizer {
         }
 
         let categoryMappings: [(String, [String])] = [
-            ("餐饮", ["KFC", "麦当劳", "星巴克", "奶茶", "咖啡", "餐", "外卖", "饮品", "面", "饭"]),
+            ("餐饮", ["KFC", "麦当劳", "星巴克", "瑞幸", "喜茶", "奈雪", "霸王茶姬", "蜜雪冰城", "奶茶", "咖啡", "餐", "外卖", "饮品", "面", "饭"]),
             ("交通", ["地铁", "打车", "公交", "滴滴", "高铁", "火车", "停车", "加油"]),
-            ("购物", ["淘宝", "京东", "商场", "购物", "超市", "便利店"]),
+            ("购物", ["淘宝", "京东", "天猫", "拼多多", "盒马", "山姆", "商场", "购物", "超市", "便利店"]),
             ("住房", ["房租", "物业", "水费", "电费", "燃气"]),
-            ("娱乐", ["电影", "游戏", "门票", "演出"]),
-            ("医疗", ["医院", "诊所", "药房", "药店"])
+            ("休闲娱乐", ["电影", "游戏", "门票", "演出"]),
+            ("医疗健康", ["医院", "诊所", "药房", "药店"])
         ]
 
         for (category, keywords) in categoryMappings {
@@ -497,11 +521,14 @@ private enum AutoLedgerLocalRecognizer {
         amountCandidate: AutoLedgerAmountCandidate?,
         merchant: String?,
         paymentMethod: String,
-        recognizedEntryCount: Int) -> String {
+        recognizedEntryCount: Int,
+        usedSharedParserAmount: Bool) -> String {
         var parts: [String] = []
 
         if let amountCandidate {
             parts.append("命中金额行“\(amountCandidate.lineText)”")
+        } else if usedSharedParserAmount {
+            parts.append("已使用智能记账本地规则识别金额")
         }
 
         if let merchant, !merchant.isEmpty {
@@ -516,7 +543,7 @@ private enum AutoLedgerLocalRecognizer {
             parts.append("截图中疑似存在\(recognizedEntryCount)笔候选记录，当前优先带出最可信的一笔")
         }
 
-        return parts.isEmpty ? "已根据截图文本生成待确认草稿。" : parts.joined(separator: "，")
+        return parts.isEmpty ? "已根据本地识别结果自动生成入账记录。" : parts.joined(separator: "，")
     }
 
     private static func buildNote(merchant: String?, kind: LedgerKind, recognizedEntryCount: Int) -> String {
@@ -536,11 +563,14 @@ private enum AutoLedgerLocalRecognizer {
         merchant: String?,
         paymentMethod: String,
         category: String?,
-        recognizedEntryCount: Int) -> Double {
+        recognizedEntryCount: Int,
+        usedSharedParserAmount: Bool) -> Double {
         var score = 0.42
 
         if let amountCandidate {
             score += min(Double(amountCandidate.score) * 0.05, 0.28)
+        } else if usedSharedParserAmount {
+            score += 0.18
         }
 
         if let merchant, !merchant.isEmpty {
@@ -560,6 +590,20 @@ private enum AutoLedgerLocalRecognizer {
         }
 
         return min(score, 0.96)
+    }
+
+    private static func preferredNonEmpty(_ first: String?, _ second: String?) -> String? {
+        let firstTrimmed = first?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let firstTrimmed, !firstTrimmed.isEmpty {
+            return firstTrimmed
+        }
+
+        let secondTrimmed = second?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let secondTrimmed, !secondTrimmed.isEmpty {
+            return secondTrimmed
+        }
+
+        return nil
     }
 }
 
@@ -1080,11 +1124,12 @@ final class AutoLedgerViewModel: ObservableObject {
             return store.paymentMethods.first(where: { $0.localizedCaseInsensitiveContains("微信") }) ?? "微信"
         }
 
-        if hint.localizedCaseInsensitiveContains("支付宝") {
+        if hint.localizedCaseInsensitiveContains("支付宝") || hint.localizedCaseInsensitiveContains("花呗") {
             return store.paymentMethods.first(where: { $0.localizedCaseInsensitiveContains("支付宝") }) ?? "支付宝"
         }
 
-        if ["银行卡", "信用卡", "储蓄卡", "visa", "mastercard"].contains(where: hint.localizedCaseInsensitiveContains) {
+        if ["银行卡", "信用卡", "储蓄卡", "visa", "mastercard", "云闪付", "apple pay"]
+            .contains(where: hint.localizedCaseInsensitiveContains) {
             return store.paymentMethods.first(where: {
                 ["银行卡", "信用卡", "储蓄卡"].contains(where: $0.localizedCaseInsensitiveContains)
             }) ?? "银行卡"
