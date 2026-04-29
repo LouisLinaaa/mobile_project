@@ -429,15 +429,6 @@ struct ScheduledLedgerEntry: Identifiable, Codable, Equatable {
     var endDate: Date?
     var isEnabled: Bool
     var bookID: UUID
-struct SavingPlan: Identifiable, Codable, Equatable {
-    let id: UUID
-    var name: String
-    var icon: String
-    var tintStyle: LedgerTintStyle
-    var targetAmount: Double
-    var savedAmount: Double
-    var deadline: Date?
-    var note: String
     let createdAt: Date
 
     init(
@@ -481,6 +472,22 @@ struct SavingPlan: Identifiable, Codable, Equatable {
 
     static func == (lhs: ScheduledLedgerEntry, rhs: ScheduledLedgerEntry) -> Bool {
         lhs.id == rhs.id
+    }
+}
+
+struct SavingPlan: Identifiable, Codable, Equatable {
+    let id: UUID
+    var name: String
+    var icon: String
+    var tintStyle: LedgerTintStyle
+    var targetAmount: Double
+    var savedAmount: Double
+    var deadline: Date?
+    var note: String
+    let createdAt: Date
+
+    init(
+        id: UUID = UUID(),
         name: String,
         icon: String = "dollarsign.circle.fill",
         tintStyle: LedgerTintStyle = .income,
