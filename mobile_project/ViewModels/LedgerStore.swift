@@ -466,6 +466,46 @@ final class LedgerStore: ObservableObject {
         return streak
     }
 
+    var monthScheduledDays: Set<Int> {
+        let now = Date()
+        return Set(
+            scheduledEntries
+                .filter { entry in
+                    entry.bookID == currentBook.id &&
+                        entry.isEnabled &&
+                        !entry.isExpired &&
+                        calendar.isDate(entry.nextDate, equalTo: now, toGranularity: .month) &&
+                        calendar.isDate(entry.nextDate, equalTo: now, toGranularity: .year)
+                }
+                .map { calendar.component(.day, from: $0.nextDate) })
+    }
+
+    func currentBookEntriesForDay(_ day: Int) -> [LedgerEntry] {
+        let now = Date()
+        var components = calendar.dateComponents([.year, .month], from: now)
+        components.day = day
+        guard let date = calendar.date(from: components) else { return [] }
+        let dayStart = calendar.startOfDay(for: date)
+        return currentBookEntries
+            .filter { calendar.startOfDay(for: $0.date) == dayStart }
+            .sorted { $0.date > $1.date }
+    }
+
+    func currentBookScheduledEntriesForDay(_ day: Int) -> [ScheduledLedgerEntry] {
+        let now = Date()
+        var components = calendar.dateComponents([.year, .month], from: now)
+        components.day = day
+        guard let date = calendar.date(from: components) else { return [] }
+        let dayStart = calendar.startOfDay(for: date)
+        return scheduledEntries
+            .filter { entry in
+                entry.bookID == currentBook.id &&
+                    entry.isEnabled &&
+                    !entry.isExpired &&
+                    calendar.startOfDay(for: entry.nextDate) == dayStart
+            }
+    }
+
     var assistantCardHint: String {
         switch appSettings.assistantReplyStyle {
         case .concise:
