@@ -479,7 +479,7 @@ private struct SavingPlanEditorSheet: View {
                                 DatePicker(
                                     "截止日期".localized,
                                     selection: $deadline,
-                                    in: Date()...,
+                                    in: min(deadline, Date())...,
                                     displayedComponents: .date)
                                     .datePickerStyle(.compact)
                                     .font(.system(size: 15, weight: .medium, design: .rounded))
