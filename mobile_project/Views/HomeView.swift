@@ -716,6 +716,21 @@ struct HomeView: View {
         }
     }
 
+    private func handleSearchNavigation(_ action: SearchNavigationAction) {
+        switch action {
+        case .showEntry(let entry):
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                selectedEntry = entry
+            }
+        case .openScreen(let screen):
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                openScreen(screen)
+            }
+        case .switchBook(let book):
+            store.setCurrentBook(book)
+        }
+    }
+
     private func runAfterInteractiveTransition(_ action: @escaping @MainActor () -> Void) {
         pendingInteractionTask?.cancel()
         pendingInteractionTask = Task { @MainActor in
