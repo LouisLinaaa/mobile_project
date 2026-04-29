@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SavingPlanView: View {
     @EnvironmentObject private var store: LedgerStore
-    @Environment(\.colorScheme) private var colorScheme
 
     @State private var isCreateSheetPresented = false
     @State private var editingPlan: SavingPlan?
