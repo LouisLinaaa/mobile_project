@@ -125,6 +125,19 @@ Current downstream mapping supports these semantic outputs well:
 
 The most important field is `amount`. If `amount` is missing or not numeric, the app treats the recognition as failed and will not auto-save.
 
+## Local fallback and voice scope
+
+The OpenAI layer is only the preferred parser for screenshot / OCR automatic bookkeeping. It is not used for voice audio.
+
+When the OpenAI configuration is missing or the app is running in local mode, `LocalAutoLedgerService` performs on-device Vision OCR, then applies the same local parser rules used by the AI bookkeeping screen. This fallback can fill:
+
+- spoken-style amounts such as `32块`, `10块钱`, `十八块五`, `一万五千元`
+- common categories such as `餐饮`, `交通`, `购物`, `住房`, `休闲娱乐`, `医疗健康`, `工资`
+- common merchants and platforms such as `麦当劳`, `肯德基`, `星巴克`, `瑞幸`, `盒马`, `山姆`, `淘宝`, `京东`, `滴滴`
+- common payment hints such as `微信`, `支付宝`, `花呗`, `银行卡`, `云闪付`, `Apple Pay`, `现金`
+
+The in-app AI bookkeeping screen still shows a review card so the user can edit the entry before saving. Shortcut-triggered Auto Ledger does not show review; once local or OpenAI parsing produces a valid positive amount, it saves directly through the shared persistence path.
+
 ## Prompt placeholders
 
 `AUTO_LEDGER_OPENAI_USER_PROMPT_TEMPLATE` supports:
@@ -180,6 +193,6 @@ OCR 文本如下：
 
 ## Notes
 
-- If the LLM config is incomplete, the app falls back to local OCR.
-- If local OCR also fails, the app now returns failure instead of injecting fake values like `18.50`.
+- If the LLM config is incomplete, the app falls back to local OCR plus local parser rules.
+- If local OCR and parser rules also fail, the app returns failure instead of injecting fake values like `18.50`.
 - The shortcut no longer needs to reopen the app after recognition. `识别账单` now saves directly through the shared persistence layer.

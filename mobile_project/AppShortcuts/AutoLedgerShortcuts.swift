@@ -551,11 +551,12 @@ private enum AutoLedgerDirectSaver {
             return paymentMethods.first(where: { $0.localizedCaseInsensitiveContains("微信") }) ?? "微信"
         }
 
-        if hint.localizedCaseInsensitiveContains("支付宝") {
+        if hint.localizedCaseInsensitiveContains("支付宝") || hint.localizedCaseInsensitiveContains("花呗") {
             return paymentMethods.first(where: { $0.localizedCaseInsensitiveContains("支付宝") }) ?? "支付宝"
         }
 
-        if ["银行卡", "信用卡", "储蓄卡", "visa", "mastercard"].contains(where: hint.localizedCaseInsensitiveContains) {
+        if ["银行卡", "信用卡", "储蓄卡", "visa", "mastercard", "云闪付", "apple pay"]
+            .contains(where: hint.localizedCaseInsensitiveContains) {
             return paymentMethods.first(where: {
                 ["银行卡", "信用卡", "储蓄卡"].contains(where: $0.localizedCaseInsensitiveContains)
             }) ?? "银行卡"

@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: `2026-04-27`
+Last updated: `2026-04-29`
 
 ## Product Position
 
@@ -47,9 +47,10 @@ The current codebase focuses on three priorities:
 
 - local OCR-based receipt parsing foundation
 - screenshot handoff through App Shortcuts
-- review and save flow inside the app
+- direct save flow for shortcut-triggered automatic bookkeeping
 - optional OpenAI-backed parsing via environment or `Info.plist` configuration
-- voice bookkeeping tab with local transcript capture, cloud voice-model parsing, and local fallback review flow
+- shared local parser fallback for automatic bookkeeping and in-app AI bookkeeping
+- voice bookkeeping tab with local `Speech.framework` transcription and the same local parser-backed review flow
 
 ## Known Constraints
 
@@ -67,7 +68,7 @@ The current codebase focuses on three priorities:
 
 - continue splitting large SwiftUI files into smaller feature-focused components
 - polish backup and restore UX around the current signing limitation
-- stabilize Auto Ledger parsing and review flows, especially the cloud voice-model fallback path
+- add focused parser regression coverage for common voice phrases and payment screenshots
 - add lightweight tests around persistence, import/export, and snapshot generation
 
 ## Repository Notes
