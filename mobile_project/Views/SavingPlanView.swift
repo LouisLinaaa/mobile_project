@@ -30,6 +30,14 @@ struct SavingPlanView: View {
         store.savingPlans.reduce(0) { $0 + $1.savedAmount }
     }
 
+    private var totalRemaining: Double {
+        store.savingPlans.reduce(0) { $0 + max($1.targetAmount - $1.savedAmount, 0) }
+    }
+
+    private var totalEffectiveSaved: Double {
+        store.savingPlans.reduce(0) { $0 + min($1.savedAmount, $1.targetAmount) }
+    }
+
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 20) {
@@ -165,7 +173,7 @@ struct SavingPlanView: View {
                 overviewMetric(title: "已存入".localized, value: LedgerFormatters.currency(totalSaved))
                 overviewMetric(
                     title: "还需要".localized,
-                    value: LedgerFormatters.currency(max(totalTarget - totalSaved, 0)))
+                    value: LedgerFormatters.currency(totalRemaining))
             }
 
             GeometryReader { geo in
@@ -178,7 +186,7 @@ struct SavingPlanView: View {
                         .fill(Color.ledgerIncome)
                         .frame(
                             width: max(
-                                geo.size.width * (totalTarget > 0 ? min(totalSaved / totalTarget, 1) : 0),
+                                geo.size.width * (totalTarget > 0 ? min(totalEffectiveSaved / totalTarget, 1) : 0),
                                 0),
                             height: 10)
                 }
