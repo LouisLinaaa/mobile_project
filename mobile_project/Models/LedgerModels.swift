@@ -388,6 +388,52 @@ struct LedgerBudgetCategorySummary: Identifiable {
     }
 }
 
+struct SavingPlan: Identifiable, Codable, Equatable {
+    let id: UUID
+    var name: String
+    var icon: String
+    var tintStyle: LedgerTintStyle
+    var targetAmount: Double
+    var savedAmount: Double
+    var deadline: Date?
+    var note: String
+    let createdAt: Date
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        icon: String = "dollarsign.circle.fill",
+        tintStyle: LedgerTintStyle = .income,
+        targetAmount: Double,
+        savedAmount: Double = 0,
+        deadline: Date? = nil,
+        note: String = "",
+        createdAt: Date = Date()) {
+        self.id = id
+        self.name = name
+        self.icon = icon
+        self.tintStyle = tintStyle
+        self.targetAmount = targetAmount
+        self.savedAmount = savedAmount
+        self.deadline = deadline
+        self.note = note
+        self.createdAt = createdAt
+    }
+
+    var progress: Double {
+        guard targetAmount > 0 else { return 0 }
+        return min(savedAmount / targetAmount, 1)
+    }
+
+    var remaining: Double {
+        max(targetAmount - savedAmount, 0)
+    }
+
+    var isCompleted: Bool {
+        savedAmount >= targetAmount
+    }
+}
+
 struct QuickEntryDraft {
     var bookID: UUID?
     var kind: LedgerKind = .expense
@@ -845,7 +891,7 @@ extension DrawerShortcut {
             title: "攒钱计划",
             icon: "dollarsign.circle",
             accent: .ledgerIncome,
-            destination: .placeholder("攒钱计划")),
+            destination: .screen(.savingPlans)),
         DrawerShortcut(
             id: "widgets",
             title: "小组件",
