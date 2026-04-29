@@ -13,6 +13,7 @@ struct LedgerPersistenceSnapshot: Codable {
     var categorySchemes: [LedgerCategoryScheme]
     var selectedCategorySchemeID: UUID
     var scheduledEntries: [ScheduledLedgerEntry]
+    var savingPlans: [SavingPlan]
 
     private enum CodingKeys: String, CodingKey {
         case appSettings
@@ -26,6 +27,7 @@ struct LedgerPersistenceSnapshot: Codable {
         case categorySchemes
         case selectedCategorySchemeID
         case scheduledEntries
+        case savingPlans
     }
 
     init(
@@ -40,6 +42,7 @@ struct LedgerPersistenceSnapshot: Codable {
         categorySchemes: [LedgerCategoryScheme],
         selectedCategorySchemeID: UUID,
         scheduledEntries: [ScheduledLedgerEntry] = []) {
+        savingPlans: [SavingPlan] = []) {
         self.appSettings = appSettings
         self.budgetLimit = budgetLimit
         self.bookBudgets = bookBudgets
@@ -51,6 +54,7 @@ struct LedgerPersistenceSnapshot: Codable {
         self.categorySchemes = categorySchemes
         self.selectedCategorySchemeID = selectedCategorySchemeID
         self.scheduledEntries = scheduledEntries
+        self.savingPlans = savingPlans
     }
 
     init(from decoder: Decoder) throws {
@@ -66,6 +70,7 @@ struct LedgerPersistenceSnapshot: Codable {
         categorySchemes = try container.decodeIfPresent([LedgerCategoryScheme].self, forKey: .categorySchemes) ?? []
         selectedCategorySchemeID = try container.decodeIfPresent(UUID.self, forKey: .selectedCategorySchemeID) ?? UUID()
         scheduledEntries = try container.decodeIfPresent([ScheduledLedgerEntry].self, forKey: .scheduledEntries) ?? []
+        savingPlans = try container.decodeIfPresent([SavingPlan].self, forKey: .savingPlans) ?? []
     }
 }
 
@@ -200,6 +205,7 @@ final class LedgerStore: ObservableObject {
         didSet { schedulePersistLedgerState() }
     }
     @Published private(set) var scheduledEntries: [ScheduledLedgerEntry] {
+    @Published private(set) var savingPlans: [SavingPlan] {
         didSet { schedulePersistLedgerState() }
     }
     @Published private(set) var lastBackupDate: Date?
@@ -244,6 +250,7 @@ final class LedgerStore: ObservableObject {
         categorySchemes = seed.categorySchemes
         selectedCategorySchemeID = seed.selectedCategorySchemeID
         scheduledEntries = []
+        savingPlans = []
         lastBackupDate = nil
         iCloudBackupSummary = nil
         appSettings = loadAppSettings()
@@ -875,6 +882,29 @@ final class LedgerStore: ObservableObject {
 
     func removeCategoryBudget(_ budget: LedgerCategoryBudget) {
         categoryBudgets.removeAll { $0.id == budget.id }
+    }
+
+    func addSavingPlan(_ plan: SavingPlan) {
+        savingPlans.append(plan)
+    }
+
+    func updateSavingPlan(_ plan: SavingPlan) {
+        guard let index = savingPlans.firstIndex(where: { $0.id == plan.id }) else { return }
+        savingPlans[index] = plan
+    }
+
+    func deleteSavingPlan(_ plan: SavingPlan) {
+        savingPlans.removeAll { $0.id == plan.id }
+    }
+
+    func depositToSavingPlan(_ plan: SavingPlan, amount: Double) {
+        guard amount > 0, let index = savingPlans.firstIndex(where: { $0.id == plan.id }) else { return }
+        savingPlans[index].savedAmount += amount
+    }
+
+    func withdrawFromSavingPlan(_ plan: SavingPlan, amount: Double) {
+        guard amount > 0, let index = savingPlans.firstIndex(where: { $0.id == plan.id }) else { return }
+        savingPlans[index].savedAmount = max(savingPlans[index].savedAmount - amount, 0)
     }
 
     func bookBudget(for bookID: UUID) -> LedgerBookBudget? {
@@ -1757,6 +1787,7 @@ final class LedgerStore: ObservableObject {
             categorySchemes: categorySchemes,
             selectedCategorySchemeID: selectedCategorySchemeID,
             scheduledEntries: scheduledEntries)
+            savingPlans: savingPlans)
     }
 
     private func encodedBackupSnapshot() -> Data? {
@@ -1779,6 +1810,7 @@ final class LedgerStore: ObservableObject {
                 categorySchemes: categorySchemes,
                 selectedCategorySchemeID: selectedCategorySchemeID,
                 scheduledEntries: scheduledEntries))
+                savingPlans: savingPlans))
     }
 
     private func applyBackupSnapshot(_ snapshot: BackupSnapshot) {
@@ -1795,6 +1827,7 @@ final class LedgerStore: ObservableObject {
                 categorySchemes: snapshot.categorySchemes,
                 selectedCategorySchemeID: snapshot.selectedCategorySchemeID,
                 scheduledEntries: snapshot.scheduledEntries))
+                savingPlans: snapshot.savingPlans))
     }
 
     private func applyPersistedState(_ snapshot: LedgerPersistenceSnapshot) {
@@ -1832,6 +1865,7 @@ final class LedgerStore: ObservableObject {
         for entry in scheduledEntries where entry.isEnabled {
             scheduleNotificationForEntry(entry)
         }
+        savingPlans = snapshot.savingPlans
         clearHistoryPresentation()
         clearEntryNavigationRequest()
         flushPendingSettingsPersistence()
@@ -1869,6 +1903,7 @@ final class LedgerStore: ObservableObject {
         let categorySchemes: [LedgerCategoryScheme]
         let selectedCategorySchemeID: UUID
         let scheduledEntries: [ScheduledLedgerEntry]
+        let savingPlans: [SavingPlan]
 
         private enum CodingKeys: String, CodingKey {
             case generatedAt
@@ -1885,6 +1920,7 @@ final class LedgerStore: ObservableObject {
             case categorySchemes
             case selectedCategorySchemeID
             case scheduledEntries
+            case savingPlans
         }
 
         init(
@@ -1902,6 +1938,7 @@ final class LedgerStore: ObservableObject {
             categorySchemes: [LedgerCategoryScheme],
             selectedCategorySchemeID: UUID,
             scheduledEntries: [ScheduledLedgerEntry] = []) {
+            savingPlans: [SavingPlan] = []) {
             self.generatedAt = generatedAt
             self.backupVersion = backupVersion
             self.appVersion = appVersion
@@ -1916,6 +1953,7 @@ final class LedgerStore: ObservableObject {
             self.categorySchemes = categorySchemes
             self.selectedCategorySchemeID = selectedCategorySchemeID
             self.scheduledEntries = scheduledEntries
+            self.savingPlans = savingPlans
         }
 
         init(from decoder: Decoder) throws {
@@ -1935,6 +1973,7 @@ final class LedgerStore: ObservableObject {
             selectedCategorySchemeID = try container
                 .decodeIfPresent(UUID.self, forKey: .selectedCategorySchemeID) ?? UUID()
             scheduledEntries = try container.decodeIfPresent([ScheduledLedgerEntry].self, forKey: .scheduledEntries) ?? []
+            savingPlans = try container.decodeIfPresent([SavingPlan].self, forKey: .savingPlans) ?? []
         }
     }
 
