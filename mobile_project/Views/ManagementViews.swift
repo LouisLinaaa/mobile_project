@@ -4166,7 +4166,7 @@ final class ScreenshotOCRViewModel: ObservableObject {
                     }
                 }
 
-                Task { @MainActor in
+                Task { @MainActor [rowPairs] in
                     self.recognizedText = fullText
                     self.confidence = avgConfidence
                     let result = AIParser.parseTextAndPairs(fullText, rowPairs: rowPairs, scheme: scheme)
@@ -4477,11 +4477,15 @@ final class VoiceRecognitionViewModel: ObservableObject {
 struct AIBillingView: View {
     @EnvironmentObject private var store: LedgerStore
 
-    @State private var activeTab: AITab = .screenshot
+    @State private var activeTab: AITab
     @StateObject private var ocrVM = ScreenshotOCRViewModel()
     @StateObject private var voiceVM = VoiceRecognitionViewModel()
     @State private var savedEntry = false
     @State private var lastSavedAmount: String = ""
+
+    init(startOnVoice: Bool = false) {
+        _activeTab = State(initialValue: startOnVoice ? .voice : .screenshot)
+    }
 
     private enum AITab: String, CaseIterable {
         case screenshot = "截图识别"

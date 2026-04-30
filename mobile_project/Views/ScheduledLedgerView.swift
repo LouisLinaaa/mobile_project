@@ -302,6 +302,7 @@ private enum ScheduledLedgerEditorMode: Identifiable {
     }
 }
 
+@MainActor
 private struct ScheduledLedgerEditorSheet: View {
     let mode: ScheduledLedgerEditorMode
     let store: LedgerStore

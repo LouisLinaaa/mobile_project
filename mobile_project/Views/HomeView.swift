@@ -21,6 +21,7 @@ struct HomeView: View {
     @State private var isBookSwitcherPresented = false
     @State private var bookSwitchToast: String?
     @State private var selectedCalendarDay: Int?
+    @State private var isVoiceBillingPresented = false
 
     private var isSensitiveInfoVisible: Bool {
         store.isBalanceVisible && !store.appSettings.hideSensitiveInfo
@@ -82,6 +83,10 @@ struct HomeView: View {
             SearchView(store: store) { action in
                 handleSearchNavigation(action)
             }
+        }
+        .sheet(isPresented: $isVoiceBillingPresented) {
+            AIBillingView(startOnVoice: true)
+                .environmentObject(store)
         }
         .alert("功能预留", isPresented: featureAlertBinding) {
             Button("知道了", role: .cancel) {}
@@ -911,37 +916,46 @@ struct HomeView: View {
                 .buttonStyle(LedgerResponsiveButtonStyle())
             }
 
-            Button {
-                openQuickAddSheet()
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundStyle(Color.ledgerText)
+            HStack(spacing: 0) {
+                Button {
+                    openQuickAddSheet()
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundStyle(Color.ledgerText)
 
-                    Text("记一笔")
-                        .font(.system(size: 17, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.ledgerText)
+                        Text("记一笔")
+                            .font(.system(size: 17, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Color.ledgerText)
 
-                    Text("金额、分类、备注")
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.ledgerMuted)
-                        .lineLimit(1)
+                        Text("金额、分类、备注")
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(Color.ledgerMuted)
+                            .lineLimit(1)
 
-                    Spacer()
+                        Spacer()
+                    }
+                    .padding(.leading, 16)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .buttonStyle(LedgerResponsiveButtonStyle())
 
+                Button {
+                    isVoiceBillingPresented = true
+                } label: {
                     Image(systemName: "waveform")
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundStyle(Color.ledgerAccent)
+                        .frame(width: 52, height: 54)
                 }
-                .padding(.horizontal, 16)
-                .frame(height: 54)
-                .background(Color.ledgerElevated.opacity(colorScheme == .dark ? 0.94 : 0.96))
-                .clipShape(Capsule())
-                .overlay(Capsule().stroke(Color.ledgerCardStroke, lineWidth: 1))
-                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.20 : 0.06), radius: 14, x: 0, y: 8)
+                .buttonStyle(LedgerResponsiveButtonStyle())
             }
-            .buttonStyle(LedgerResponsiveButtonStyle())
+            .frame(height: 54)
+            .background(Color.ledgerElevated.opacity(colorScheme == .dark ? 0.94 : 0.96))
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(Color.ledgerCardStroke, lineWidth: 1))
+            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.20 : 0.06), radius: 14, x: 0, y: 8)
         }
         .padding(.horizontal, 14)
         .padding(.top, 8)
