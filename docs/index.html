@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Monee | Privacy-first iOS finance</title>
+    <meta
+      name="description"
+      content="Monee is a privacy-first, local-first iOS personal finance app built with SwiftUI, widgets, OCR auto-ledger, budgets, saving plans, and offline data."
+    >
+    <meta property="og:title" content="Monee">
+    <meta
+      property="og:description"
+      content="A privacy-first iOS personal finance app with local data, widgets, OCR auto-ledger, budgets, and saving plans."
+    >
+    <meta property="og:image" content="https://louislinaaa.github.io/mobile_project/assets/branding/monee-app-icon-source.png">
+    <meta name="theme-color" content="#10231e">
+    <link rel="icon" href="assets/branding/monee-app-icon-source.png">
+    <link rel="stylesheet" href="site.css">
+  </head>
+  <body>
+    <header class="site-header" aria-label="Main navigation">
+      <a class="brand" href="#top" aria-label="Monee home">
+        <img src="assets/branding/monee-app-icon-source.png" alt="" width="40" height="40">
+        <span>Monee</span>
+      </a>
+      <nav>
+        <a href="#features">Features</a>
+        <a href="#architecture">Architecture</a>
+        <a href="https://github.com/LouisLinaaa/mobile_project/releases/latest">Release</a>
+        <a class="nav-button" href="https://github.com/LouisLinaaa/mobile_project">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <h1>Personal finance that stays on your iPhone.</h1>
+          <p>
+            Monee is a native SwiftUI bookkeeping app for everyday spending, budgets, saving goals,
+            widgets, and AI-assisted screenshot recognition without requiring a cloud account.
+          </p>
+          <div class="hero-actions">
+            <a class="primary-action" href="https://github.com/LouisLinaaa/mobile_project/releases/latest">
+              Download latest
+            </a>
+            <a class="secondary-action" href="https://github.com/LouisLinaaa/mobile_project">
+              View source
+            </a>
+          </div>
+        </div>
+
+        <div class="phone-stage" role="img" aria-label="Illustration of the Monee app dashboard and Auto Ledger status">
+          <div class="phone" aria-hidden="true">
+            <div class="phone-top">
+              <span>Today</span>
+              <strong>HK$128.40</strong>
+            </div>
+            <div class="month-card">
+              <span>Monthly budget</span>
+              <strong>64%</strong>
+              <div class="meter"><span></span></div>
+            </div>
+            <div class="quick-row">
+              <span>Dining</span>
+              <strong>HK$53.30</strong>
+            </div>
+            <div class="quick-row">
+              <span>Transport</span>
+              <strong>HK$18.00</strong>
+            </div>
+            <div class="auto-ledger">
+              <img src="assets/branding/monee-app-icon-source.png" alt="" width="56" height="56">
+              <div>
+                <span>Auto Ledger</span>
+                <strong>Screenshot recognized</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="feature-strip" aria-label="Project highlights">
+        <div>
+          <strong>Local-first</strong>
+          <span>JSON snapshots, App Group widget data, optional iCloud key-value backup.</span>
+        </div>
+        <div>
+          <strong>Native iOS</strong>
+          <span>SwiftUI, Charts, WidgetKit, Vision, Speech, AppIntents, notifications.</span>
+        </div>
+        <div>
+          <strong>Course release</strong>
+          <span>Built for COMP7506B Smart Phone Apps Development 2026, Group 09.</span>
+        </div>
+      </section>
+
+      <section class="section" id="features">
+        <div class="section-heading">
+          <h2>Everything for daily bookkeeping.</h2>
+          <p>
+            Monee keeps the core flows close to the user: record quickly, review budgets,
+            plan recurring spending, and see useful information on the home screen.
+          </p>
+        </div>
+        <div class="feature-grid">
+          <article>
+            <span class="icon">01</span>
+            <h3>Bookkeeping</h3>
+            <p>Track income and expenses across books, accounts, categories, payment methods, notes, and tags.</p>
+          </article>
+          <article>
+            <span class="icon">02</span>
+            <h3>Budgets and plans</h3>
+            <p>Manage monthly budgets, category budgets, saving goals, scheduled ledger entries, and reminders.</p>
+          </article>
+          <article>
+            <span class="icon">03</span>
+            <h3>Auto Ledger</h3>
+            <p>Use App Shortcuts, Vision OCR, local parsing, and optional OpenAI-compatible parsing for screenshots.</p>
+          </article>
+          <article>
+            <span class="icon">04</span>
+            <h3>Widgets</h3>
+            <p>Surface today spending, budget progress, quick actions, account overview, and Auto Ledger status.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="architecture" id="architecture">
+        <div class="architecture-copy">
+          <h2>Built as a privacy-first native app.</h2>
+          <p>
+            The app centers state in <code>LedgerStore</code>, keeps models serializable with
+            <code>Codable</code>, and publishes compact widget snapshots instead of exposing the full
+            app state to extensions.
+          </p>
+        </div>
+        <div class="architecture-list">
+          <div><span>SwiftUI</span><strong>Native interface</strong></div>
+          <div><span>Vision</span><strong>On-device OCR</strong></div>
+          <div><span>WidgetKit</span><strong>Five glanceable widgets</strong></div>
+          <div><span>AppIntents</span><strong>Shortcut-driven automation</strong></div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>Monee latest release</span>
+      <a href="https://github.com/LouisLinaaa/mobile_project">github.com/LouisLinaaa/mobile_project</a>
+    </footer>
+  </body>
+</html>
