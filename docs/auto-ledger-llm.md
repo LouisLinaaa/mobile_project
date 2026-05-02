@@ -1,7 +1,8 @@
-# Auto Ledger LLM (Screenshot / OCR)
+# Auto Ledger LLM and Local Parser
 
-This layer is intentionally independent from the Auto Ledger UI and shortcut flow.
-It is only responsible for screenshot and OCR-based parsing. Voice bookkeeping stays on the local `Speech.framework` transcription path and does not use a cloud voice model.
+This layer is intentionally independent from the Auto Ledger UI and shortcut flow. It is responsible for screenshot and OCR-based parsing, with a local parser fallback when no remote model is configured.
+
+Voice bookkeeping stays on the local `Speech.framework` transcription path and does not use a cloud voice model.
 
 ## Environment keys
 
@@ -25,7 +26,7 @@ It does **not** read `.env` directly at runtime.
 
 The entry point is `mobile_project/ViewModels/AutoLedgerLLM.swift`, and the request is sent from `mobile_project/ViewModels/AutoLedgerFlow.swift`.
 
-`GatewayAutoLedgerService.parseReceipt(...)` sends an OpenAI Chat Completions request:
+`GatewayAutoLedgerService.parseReceipt(...)` sends an OpenAI-compatible Chat Completions request:
 
 ```json
 {
@@ -47,14 +48,14 @@ The entry point is `mobile_project/ViewModels/AutoLedgerLLM.swift`, and the requ
 }
 ```
 
-The OpenAI request now receives both:
+The configured request receives both:
 
 - an image part: the original screenshot as a `data:image/png;base64,...` URL
 - OCR text, merged from:
   - shortcut input `OCR 文本`
   - on-device Vision OCR over the screenshot
 
-The model can use image understanding and text extraction together. The OCR channel is no longer optional in normal screenshot flows.
+The model can use image understanding and text extraction together. The OCR channel is part of normal screenshot flows.
 
 ## Expected response
 
@@ -127,16 +128,16 @@ The most important field is `amount`. If `amount` is missing or not numeric, the
 
 ## Local fallback and voice scope
 
-The OpenAI layer is only the preferred parser for screenshot / OCR automatic bookkeeping. It is not used for voice audio.
+The OpenAI-compatible layer is only the preferred parser for screenshot / OCR automatic bookkeeping. It is not used for voice audio.
 
-When the OpenAI configuration is missing or the app is running in local mode, `LocalAutoLedgerService` performs on-device Vision OCR, then applies the same local parser rules used by the AI bookkeeping screen. This fallback can fill:
+When the remote configuration is missing or the app is running in local mode, `LocalAutoLedgerService` performs on-device Vision OCR, then applies the same local parser rules used by the AI bookkeeping screen. This fallback can fill:
 
 - spoken-style amounts such as `32块`, `10块钱`, `十八块五`, `一万五千元`
 - common categories such as `餐饮`, `交通`, `购物`, `住房`, `休闲娱乐`, `医疗健康`, `工资`
 - common merchants and platforms such as `麦当劳`, `肯德基`, `星巴克`, `瑞幸`, `盒马`, `山姆`, `淘宝`, `京东`, `滴滴`
 - common payment hints such as `微信`, `支付宝`, `花呗`, `银行卡`, `云闪付`, `Apple Pay`, `现金`
 
-The in-app AI bookkeeping screen still shows a review card so the user can edit the entry before saving. Shortcut-triggered Auto Ledger does not show review; once local or OpenAI parsing produces a valid positive amount, it saves directly through the shared persistence path.
+The in-app AI bookkeeping screen still shows a review card so the user can edit the entry before saving. Shortcut-triggered Auto Ledger does not show review; once local or remote parsing produces a valid positive amount, it saves directly through the shared persistence path.
 
 ## Prompt placeholders
 

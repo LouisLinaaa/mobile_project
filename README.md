@@ -2,7 +2,7 @@
 
 中文版本: [README_ZH.md](README_ZH.md)
 
-`Monee` is a privacy-first, local-first iPhone bookkeeping app built with `SwiftUI`.
+`Monee` is a privacy-first, local-first iPhone bookkeeping app built natively with `SwiftUI`.
 
 This repository is also the course project repo for `COMP7506B Smart Phone Apps Development (2026)` by Group 09.
 
@@ -10,22 +10,29 @@ This repository is also the course project repo for `COMP7506B Smart Phone Apps 
 
 - App name: `Monee`
 - Platform: `iPhone` + `WidgetKit`
-- UI stack: `SwiftUI` + `Charts`
-- Storage model: local persistence first, cloud backup prepared but signing-limited
-- Smart features: receipt OCR, App Shortcuts handoff, optional OpenAI-backed auto-ledger flow
+- Language and UI stack: `Swift 5.7`, `SwiftUI`, `Charts`
+- Architecture: MVVM-style views with a centralized `LedgerStore`
+- Storage model: local JSON/UserDefaults persistence with optional iCloud key-value backup plumbing
+- Smart features: screenshot OCR, App Shortcuts handoff, local parser fallback, optional OpenAI-compatible LLM parsing
+- System integrations: `WidgetKit`, `Vision`, `Speech`, `AppIntents`, local notifications
 
 ## Current Status
 
-The project is no longer just a bookkeeping shell. The current branch already includes:
+The project is feature-complete for the course report scope. The current branch includes:
 
 - quick expense and income entry
 - dashboard, trend, ranking, and budget views
 - books, accounts, categories, and settings management
+- scheduled ledger templates and reminders
+- saving plans with progress tracking
+- app-wide search across records, books, categories, and quick actions
 - CSV import and export flows
 - local backup and restore
-- iCloud backup snapshot plumbing, currently limited by Personal Team signing
+- optional iCloud key-value backup snapshot plumbing
+- bilingual Chinese and English localization
 - five widget surfaces
-- Auto Ledger flows based on screenshot OCR, App Shortcuts, and optional LLM parsing
+- Auto Ledger flows based on screenshot OCR, App Shortcuts, local fallback parsing, and optional LLM parsing
+- local notifications for budgets and scheduled ledger entries
 
 Detailed progress and known gaps live in [docs/project-status.md](docs/project-status.md).
 
@@ -38,7 +45,7 @@ mobile_project/ViewModels/     State, persistence, and feature orchestration
 mobile_project/Views/          SwiftUI screens and view-level composition
 mobile_project/WidgetSupport/  App-to-widget snapshot bridge
 mobile_project_widgets/        Widget extension target
-docs/                          Project notes, status, and implementation docs
+docs/                          Report-aligned notes, status, and implementation docs
 scripts/                       Local automation and helper scripts
 .githooks/                     Git hook entrypoints
 ```
@@ -68,6 +75,13 @@ xcodebuild -project mobile_project.xcodeproj \
   build
 ```
 
+## Core Features
+
+- Local-first bookkeeping with multiple books, accounts, categories, budgets, scheduled entries, and saving plans
+- Calendar planning surface with budget context, recorded-entry markers, scheduled-ledger due dates, and reminders
+- Auto Ledger screenshot recognition using App Shortcuts, Vision OCR, local parsing, and optional LLM parsing
+- Search, CSV import/export, backup/restore, bilingual localization, and adaptive light/dark UI
+
 ## Widget and Shortcut Notes
 
 The widget extension currently ships these surfaces:
@@ -82,21 +96,19 @@ The app also exposes App Shortcuts for Auto Ledger so screenshots can be parsed 
 
 LLM configuration details are documented in [docs/auto-ledger-llm.md](docs/auto-ledger-llm.md).
 
-## Signing Limitation
+## Build and Signing Notes
 
-The repo can build locally under a Personal Team, but full iCloud capability is still blocked by provisioning limits.
+The repo can build locally under a Personal Team. Local persistence, local backup/restore, widgets, shortcuts, and notifications are implemented in code. Production iCloud behavior still depends on using a provisioning profile with the required iCloud entitlement.
 
-What is already done:
+## Testing and Validation
 
-- local backup snapshot model
-- restore flow
-- iCloud-backed snapshot plumbing in the store
+Project validation followed the report process:
 
-What is still blocked:
-
-- enabling real iCloud entitlement and production-grade cloud backup
-
-## Git Hooks
+- feature branches and pull requests for major work
+- Xcode Simulator builds and manual acceptance checks
+- persistence checks after app background/relaunch
+- cross-device layout checks on multiple iPhone simulators
+- Git hooks for formatting and scoped pre-push builds
 
 Install local hooks:
 
@@ -116,3 +128,10 @@ Group 09:
 - Cao Kainan
 - Li Ye
 - Lin Ruiyi
+
+Report contribution summary for Lin Ruiyi:
+
+- overall system architecture and core app foundation
+- initial UI and management flows
+- widget extension, snapshot synchronization, and signing/build fixes
+- settings, profile, backup/restore, budget, Auto Ledger, local notifications, bilingual localization, branding, documentation, and build tooling
