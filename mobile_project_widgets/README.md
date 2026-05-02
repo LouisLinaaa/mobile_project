@@ -17,3 +17,7 @@ This target renders the WidgetKit surfaces backed by the shared snapshot payload
 ## Key File
 
 - [LedgerWidgetsBundle.swift](LedgerWidgetsBundle.swift): widget bundle, timeline provider, styling, and per-widget views
+
+## Data Flow
+
+The widgets read compact serialized snapshots written by the main app through the App Group bridge. They do not access the full `LedgerStore` directly.

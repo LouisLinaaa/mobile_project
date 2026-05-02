@@ -8,8 +8,10 @@ Bridge layer shared by the main app and the widget extension.
 
 ## Purpose
 
-This folder exists so widget-facing data stays:
+This folder exists so widget-facing data for the five report widgets stays:
 
 - explicit
 - serializable
 - decoupled from large in-memory app objects
+
+Current widget snapshots cover today spending, budget progress, quick actions, account overview, and Auto Ledger status.

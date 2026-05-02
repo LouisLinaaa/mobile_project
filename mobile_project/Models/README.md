@@ -1,11 +1,11 @@
 # Models
 
-Shared domain and transport models used across the app and automation flows.
+Shared domain and transport models used across the app, widgets, persistence, and automation flows.
 
 ## Main Files
 
-- [LedgerModels.swift](LedgerModels.swift): books, entries, accounts, categories, budgets, statistics-facing structures
-- [AutoLedgerModels.swift](AutoLedgerModels.swift): receipt parsing requests, review drafts, debug snapshots, and OpenAI payloads
+- [LedgerModels.swift](LedgerModels.swift): books, entries, accounts, categories, budgets, scheduled entries, saving plans, statistics-facing structures, and backup snapshots
+- [AutoLedgerModels.swift](AutoLedgerModels.swift): receipt parsing requests, review drafts, debug snapshots, local parser outputs, and OpenAI-compatible payloads
 
 ## Rule of Thumb
 

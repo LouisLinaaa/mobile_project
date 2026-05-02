@@ -1,6 +1,6 @@
-# Git Hooks (Format + Build Check)
+# Git Hooks
 
-本项目已内置 Git Hook：
+本项目已内置 Git Hook，用于支撑报告中描述的 feature branch / pull request 开发流程：
 
 - `pre-commit`: 检查暂存的 `.swift` 文件格式
   - 必查: staged 内容中的 Tab 缩进、行尾空格
